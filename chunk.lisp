@@ -20,7 +20,7 @@
   (:import-from #:hashlib #:sha1-objects)
   (:import-from #:alexandria #:remove-from-plist)
   (:export #:chunk #:chunk-hash #:chunk-data #:chunk-data-length
-	   #:chunk-zdata #:chunk-type #:chunk-type-string
+	   #:chunk-zdata #:chunk-type #:chunk-type-octets
 
 	   #:open-chunk-file #:chunk-file-close
 	   #:write-chunk #:read-chunk
@@ -33,7 +33,7 @@
 
 (defclass chunk ()
   ((type :initarg :type :reader chunk-type
-	 :type (vector (unsigned-byte 8) 4))
+	 :type string)
    (hash :initarg :hash
 	 :type (vector (unsigned-byte 8) 20))
    (data :initarg :data
@@ -43,17 +43,15 @@
    (zdata :initarg :zdata
 	  :type (or null (vector (unsigned-byte 8) *)))))
 
-(defmethod shared-initialize :around ((instance chunk) slots
+(defmethod shared-initialize :after ((instance chunk) slots
 				      &rest initargs &key type &allow-other-keys)
-  (when type
-    (when (typep type 'string)
-      (setf type (string-to-octets type)))
-    (check-type type (vector (unsigned-byte 8) 4)))
-  (apply #'call-next-method instance slots (remove-from-plist initargs :type))
-  (if type
-    (setf (slot-value instance 'type) type)
-    (unless (slot-boundp instance 'type)
-      (error "Chunk must have a type")))
+  (declare (ignorable initargs slots))
+  (unless (slot-boundp instance 'type)
+    (error "Chunk must have a type"))
+  (check-type (slot-value instance 'type) (string 4))
+  (let ((packed-type (string-to-octets type)))
+    (check-type packed-type (vector (unsigned-byte 8) 4)))
+
   ;; One or data or zdata must be bound.
   (or (slot-boundp instance 'data)
       (and (slot-boundp instance 'zdata)
@@ -62,9 +60,9 @@
       ;; as well.
       (error "Chunk must give either uncompressed data or compressed and size")))
 
-(defun chunk-type-string (chunk)
-  "Return the chunk type as a string."
-  (octets-to-string (chunk-type chunk)))
+(defun chunk-type-octets (chunk)
+  "Returns the chunk type as an octet vector."
+  (string-to-octets (chunk-type chunk)))
 
 (defgeneric chunk-data (chunk)
   (:documentation
@@ -249,7 +247,7 @@ data was written to."
       (replace header *chunk-magic*)
       (pack-le-integer header 16 (length zdata) 4)
       (pack-le-integer header 20 data-len 4)
-      (replace header (chunk-type chunk) :start1 24)
+      (replace header (chunk-type-octets chunk) :start1 24)
       (replace header (chunk-hash chunk) :start1 28)
       (write-sequence header stream)
       (incf write-position 48)
@@ -315,6 +313,7 @@ computed, and an error signalled if there is a mismatch."
 	   (zlength (unpack-le-integer header 16 4))
 	   (length (unpack-le-integer header 20 4))
 	   (type (subseq header 24 28))
+	   (string-type (octets-to-string type))
 	   (hash (subseq header 28 48)))
       (when (mismatch *chunk-magic* magic)
 	(error (make-condition 'chunk-corrupt-error
@@ -322,11 +321,11 @@ computed, and an error signalled if there is a mismatch."
       (let* ((payload (read-new-sequence stream zlength))
 	     (chunk (if (= length #xFFFFFFFF)
 			(make-instance 'chunk
-				       :type type
+				       :type string-type
 				       :hash hash
 				       :data payload)
 			(make-instance 'chunk
-				       :type type
+				       :type string-type
 				       :hash hash
 				       :zdata payload
 				       :data-length length))))
