@@ -33,7 +33,7 @@
 
 (defclass chunk ()
   ((type :initarg :type :reader chunk-type
-	 :type string)
+	 :type keyword)
    (hash :initarg :hash
 	 :type (vector (unsigned-byte 8) 20))
    (data :initarg :data
@@ -48,8 +48,8 @@
   (declare (ignorable initargs slots))
   (unless (slot-boundp instance 'type)
     (error "Chunk must have a type"))
-  (check-type (slot-value instance 'type) (string 4))
-  (let ((packed-type (string-to-octets type)))
+  (check-type (slot-value instance 'type) keyword)
+  (let ((packed-type (string-to-octets (symbol-name type))))
     (check-type packed-type (vector (unsigned-byte 8) 4)))
 
   ;; One or data or zdata must be bound.
@@ -62,7 +62,10 @@
 
 (defun chunk-type-octets (chunk)
   "Returns the chunk type as an octet vector."
-  (string-to-octets (chunk-type chunk)))
+  (string-to-octets (symbol-name (chunk-type chunk))))
+
+(defun octets-to-type (bytes)
+  (intern (octets-to-string bytes) "KEYWORD"))
 
 (defgeneric chunk-data (chunk)
   (:documentation
@@ -313,7 +316,7 @@ computed, and an error signalled if there is a mismatch."
 	   (zlength (unpack-le-integer header 16 4))
 	   (length (unpack-le-integer header 20 4))
 	   (type (subseq header 24 28))
-	   (string-type (octets-to-string type))
+	   (keyword-type (octets-to-type type))
 	   (hash (subseq header 28 48)))
       (when (mismatch *chunk-magic* magic)
 	(error (make-condition 'chunk-corrupt-error
@@ -321,11 +324,11 @@ computed, and an error signalled if there is a mismatch."
       (let* ((payload (read-new-sequence stream zlength))
 	     (chunk (if (= length #xFFFFFFFF)
 			(make-instance 'chunk
-				       :type string-type
+				       :type keyword-type
 				       :hash hash
 				       :data payload)
 			(make-instance 'chunk
-				       :type string-type
+				       :type keyword-type
 				       :hash hash
 				       :zdata payload
 				       :data-length length))))
@@ -384,6 +387,6 @@ computed, and an error signalled if there is a mismatch."
 	(replace data word :start1 pos)))
     data))
 
-(defun make-test-chunk (size index &optional (type "blob"))
+(defun make-test-chunk (size index &optional (type :blob))
   (make-instance 'chunk :type type
 		 :data (string-to-octets (make-random-string size index))))

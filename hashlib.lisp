@@ -45,6 +45,7 @@ Must free the resulting foreign pointer."
   "Update the SHA1 hash, appropriately for several different types."
   (etypecase obj
     (string (sha1-string ctx obj))
+    (keyword (sha1-string ctx (symbol-name obj)))
     ((vector (unsigned-byte 8))
      (sha1-vector ctx obj))))
 
@@ -101,6 +102,7 @@ The new hash can be updated independently."))
 
 (defun thing-to-ubv8 (thing)
   (etypecase thing
+    (keyword (thing-to-ubv8 (symbol-name thing)))
     (string (babel:string-to-octets thing))
     ((vector (unsigned-byte 8))
      thing)))

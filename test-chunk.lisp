@@ -8,12 +8,12 @@
 
 (addtest simple
   ;; Verity that hash and such are computed properly.
-  (let* ((c1 (make-test-chunk 10 1 "zyzy"))
+  (let* ((c1 (make-test-chunk 10 1 :zyzy))
 	 (c1-data (chunk-data c1))
-	 (hash1 (hashlib:sha1-objects "zyzy" c1-data))
+	 (hash1 (hashlib:sha1-objects "ZYZY" c1-data))
 	 (c2 (make-test-chunk 500 2))
 	 (c2-data (chunk-data c2))
-	 (hash2 (hashlib:sha1-objects "blob" c2-data)))
+	 (hash2 (hashlib:sha1-objects "BLOB" c2-data)))
     (ensure-same hash1 (chunk-hash c1))
     (ensure-same hash2 (chunk-hash c2))))
 
