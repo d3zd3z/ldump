@@ -9,9 +9,12 @@
 
 (defvar *test-suites* ()
   "List of all of the suites to test.")
-(defun run-all-tests ()
+
+(defun run-all-tests (&key return-errors)
   (dolist (test *test-suites*)
     (let ((result (run-tests :suite test)))
+      (when return-errors
+	(return-from run-all-tests result))
       (when (failures result)
 	(error "Failures in test: ~S" test))
       (when (errors result)
