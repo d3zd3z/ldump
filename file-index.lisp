@@ -1,6 +1,6 @@
 (defpackage #:ldump.file-index
   (:use #:cl #:ldump #:ldump.pack #:ldump.chunk #:iterate)
-  (:import-from #:babel #:string-to-octets))
+  (:import-from #:babel #:string-to-octets #:octets-to-string))
 (in-package #:ldump.file-index)
 
 ;;; Each pool file has an index file associated with it.  The index
@@ -56,15 +56,15 @@ this index.  The results are in an unspecified order."))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Comparing hashes.
 
-(defun hash-compare (a b)
+(defun hash-compare (a b &key (start1 0) end1)
   "Returns an integer less than, greater than or equal to zero
 depending on whether the hash A is lexicographically less than,
 greater than, or equal to B."
-  (let ((pos (mismatch a b)))
+  (let ((pos (mismatch a b :start1 start1 :end1 end1)))
     (unless pos
       (return-from hash-compare 0))
     (let ((a-elt (aref a pos))
-	  (b-elt (aref b pos)))
+	  (b-elt (aref b (- pos start1))))
       (- a-elt b-elt))))
 
 (defun hash< (a b)
@@ -190,6 +190,115 @@ list of the kinds in this indexed order."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; File-based index.
 
+(defclass file-index (base-index)
+  ((top :type (vector (unsigned-byte 32))
+	:initarg :top)
+   (count :type integer :initarg :count)
+   (hashes :type byte-vector :initarg :hashes)
+   (offsets :type (vector (unsigned-byte 32))
+	    :initarg :offsets)
+   (kind-map :type vector :initarg :kind-map)
+   (kinds :type byte-vector :initarg :kinds)))
+
+(define-condition index-error (error)
+  ((reason :initform "Unspecified" :initarg :reason :reader index-error-reason))
+  (:report (lambda (condition stream)
+	     (format stream "Error reading index file: ~A"
+		     (index-error-reason condition)))))
+
+(defun read-header (stream pool-offset)
+  "Read the index file header, make sure that it is the version we are
+expecting, and that the pool-offset matches."
+  (let ((header (read-new-sequence stream 16
+				   :on-failure-raise 'index-error)))
+    (when (mismatch header *pool-magic* :end1 8)
+      (error (make-condition 'index-error
+			     :reason "Invalid magic in index")))
+    (when (/= 4 (unpack-le-integer header 8 4))
+      (error (make-condition 'index-error
+			     :reason "Invalid index version")))
+    (let ((file-pool-offset (unpack-le-integer header 12 4)))
+      (when (/= pool-offset file-pool-offset)
+	(error (make-condition 'index-error
+			       :reason (format nil "Pool offset is incorrect: file has #x~X, expecting #x~X"
+					       file-pool-offset pool-offset)))))
+    (values)))
+
+(defun read-numbers (stream count)
+  "Read COUNT little-endian 32-bit integers from STREAM."
+  (let ((raw (read-new-sequence stream (* 4 count)))
+	(result (make-array count :element-type '(unsigned-byte 32))))
+    (dotimes (i count result)
+      (setf (aref result i)
+	    (unpack-le-integer raw (* i 4) 4)))))
+
+(defun read-kind-map (stream)
+  (let* ((raw-count (read-new-sequence stream 4))
+	 (count (unpack-le-integer raw-count 0 4))
+	 (raw (read-new-sequence stream (* 4 count)))
+	 (result (make-array count)))
+    (dotimes (i count result)
+      (let* ((name (octets-to-string raw :start (* i 4)
+				     :end (* (1+ i) 4)))
+	     (type (intern name "KEYWORD")))
+	(setf (aref result i) type)))))
+
+(defun read-index (path pool-offset)
+  (with-open-file (stream path :element-type '(unsigned-byte 8))
+    (read-header stream pool-offset)
+    (let* ((top (read-numbers stream 256))
+	   (count (aref top 255))
+	   (hashes (read-new-sequence stream (* count 20)))
+	   (offsets (read-numbers stream count))
+	   (kind-map (read-kind-map stream))
+	   (kinds (read-new-sequence stream count)))
+      (make-instance 'file-index
+		     :top top
+		     :count count
+		     :hashes hashes
+		     :offsets offsets
+		     :kind-map kind-map
+		     :kinds kinds))))
+
+(defmethod index-lookup ((index file-index) hash)
+  "Determine if this particular hash is present in the index.  Returns
+an integer offset if present or NIL if it is not."
+  (let* ((top (slot-value index 'top))
+	 (hashes (slot-value index 'hashes))
+	 (first-byte (aref hash 0))
+	 (low (if (plusp first-byte)
+		  (aref top (1- first-byte))
+		  0))
+	 (high (1- (aref top first-byte))))
+    (flet ((lookup (pos)
+	     (let ((kind-map (slot-value index 'kind-map))
+		   (kinds (slot-value index 'kinds))
+		   (offsets (slot-value index 'offsets)))
+	       (make-index-node :type (aref kind-map (aref kinds pos))
+				:offset (aref offsets pos)))))
+    (iter (while (>= high low))
+	  (for mid = (+ low (ash (- high low) -1)))
+	  (for v = (hash-compare hashes hash
+				 :start1 (* 20 mid)
+				 :end1 (* 20 (1+ mid))))
+	  (cond ((plusp v) (setf high (1- mid)))
+		((minusp v) (setf low (1+ mid)))
+		(t (return-from index-lookup (lookup mid))))))
+    nil))
+
+(defmethod index-add ((index file-index) hash type offset)
+  (declare (ignorable hash type offset))
+  (error "FILE-TYPE index is not mutable"))
+
+(defmethod index-all-nodes ((index file-index))
+  (let ((hashes (slot-value index 'hashes))
+	(offsets (slot-value index 'offsets))
+	(kind-map (slot-value index 'kind-map))
+	(kinds (slot-value index 'kinds)))
+    (iter (for i from 0 below (length offsets))
+	  (collect (cons (subseq hashes (* i 20) (* (1+ i) 20))
+			 (make-index-node :type (aref kind-map (aref kinds i))
+					  :offset (aref offsets i)))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Test routines.
@@ -199,10 +308,13 @@ list of the kinds in this indexed order."
 	 (index (mod num (length types))))
     (elt types index)))
 
+(defun hash-of-int (num)
+  (hashlib:sha1-objects (princ-to-string num)))
+
 (defun add-sample (index num)
   "Add a made up entry for the given number."
   (index-add index
-	     (hashlib:sha1-objects (princ-to-string num))
+	     (hash-of-int num)
 	     (invent-kind num)
 	     num))
 
@@ -221,7 +333,7 @@ list of the kinds in this indexed order."
 (defun check-sample (index num)
   "Make sure that num is in the index, and that very close hashes are
 not."
-  (let ((hash (hashlib:sha1-objects (princ-to-string num))))
+  (let ((hash (hash-of-int num)))
     (flet ((try (delta expected)
 	     (let ((result (index-lookup index (mangle-hash hash delta))))
 	       (unless (equalp result expected)
@@ -238,4 +350,7 @@ not."
 	  (add-sample index i))
     (iter (for i from 1 to 50000)
 	  (check-sample index i))
-    (safe-write-index #p"blort.idx" index #x12345)))
+    (safe-write-index #p"blort.idx" index #x12345)
+    (let ((findex (read-index #p"blort.idx" #x12345)))
+      (iter (for i from 1 to 50000)
+	    (check-sample findex i)))))
