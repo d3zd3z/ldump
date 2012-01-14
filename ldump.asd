@@ -1,6 +1,6 @@
 (defsystem #:ldump
   :description "Ldump stystem"
-  :depends-on (:cffi :iterate :babel
+  :depends-on (:cffi :iterate :babel :alexandria
 		     :db-zlib
 		     :cl-base64)
   :serial t

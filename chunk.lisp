@@ -18,6 +18,7 @@
   (:use #:cl #:iterate #:ldump #:db-zlib)
   (:import-from #:babel #:string-to-octets #:octets-to-string)
   (:import-from #:hashlib #:sha1-objects)
+  (:import-from #:alexandria #:remove-from-plist)
   (:export #:chunk #:chunk-hash #:chunk-data #:chunk-data-length
 	   #:chunk-zdata #:chunk-type #:chunk-type-string
 
@@ -32,11 +33,7 @@
 
 (defclass chunk ()
   ((type :initarg :type :reader chunk-type
-	 ;; Technically, we want this to be just the vector, but our
-	 ;; shared-initialize is going to change this after the fact.
-	 ;; TODO: use an around initializer instead of after to get
-	 ;; the effect we are looking for.
-	 :type (or string (vector (unsigned-byte 8) 4)))
+	 :type (vector (unsigned-byte 8) 4))
    (hash :initarg :hash
 	 :type (vector (unsigned-byte 8) 20))
    (data :initarg :data
@@ -46,27 +43,24 @@
    (zdata :initarg :zdata
 	  :type (or null (vector (unsigned-byte 8) *)))))
 
-;;; Invariant: type must be a 4-byte type.
-(defmethod shared-initialize :after ((instance chunk) slots
-				     &rest initargs)
-  (declare (ignorable initargs slots))
-  (unless (slot-boundp instance 'type)
-    (error "All chunks must have a type"))
-  (with-slots (type) instance
-    (etypecase type
-      (string
-       (let ((bytes (string-to-octets type)))
-	 (unless (= 4 (length bytes))
-	   (error "Chunk type is not 4-character, 7-bit clean."))
-	 (setf type bytes)))
-      ((vector (unsigned-byte 8) 4) t)))
-  ;; One of data or zdata must be bound.
+(defmethod shared-initialize :around ((instance chunk) slots
+				      &rest initargs &key type &allow-other-keys)
+  (when type
+    (when (typep type 'string)
+      (setf type (string-to-octets type)))
+    (check-type type (vector (unsigned-byte 8) 4)))
+  (apply #'call-next-method instance slots (remove-from-plist initargs :type))
+  (if type
+    (setf (slot-value instance 'type) type)
+    (unless (slot-boundp instance 'type)
+      (error "Chunk must have a type")))
+  ;; One or data or zdata must be bound.
   (or (slot-boundp instance 'data)
       (and (slot-boundp instance 'zdata)
 	   (slot-boundp instance 'data-length))
       ;; We need the uncompressed size in order to uncompress the data
       ;; as well.
-      (error "Chunk must give either uncompressed data or compress and size")))
+      (error "Chunk must give either uncompressed data or compressed and size")))
 
 (defun chunk-type-string (chunk)
   "Return the chunk type as a string."
