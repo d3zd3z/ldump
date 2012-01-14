@@ -3,7 +3,8 @@
 (defpackage #:ldump.test
   (:use #:cl #:iterate #:lift
 	#:ldump
-	#:ldump.chunk)
+	#:ldump.chunk
+	#:ldump.file-index)
   (:import-from #:cl-base64 #:integer-to-base64-string)
   (:export #:run-all-tests))
 (in-package #:ldump.test)

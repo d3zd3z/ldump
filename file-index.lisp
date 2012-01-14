@@ -1,6 +1,14 @@
 (defpackage #:ldump.file-index
   (:use #:cl #:ldump #:ldump.pack #:ldump.chunk #:iterate)
-  (:import-from #:babel #:string-to-octets #:octets-to-string))
+  (:import-from #:babel #:string-to-octets #:octets-to-string)
+  (:export #:index-node #:index-node-type #:index-node-offset #:index-node-p #:make-index-node
+
+	   #:base-index #:ram-index #:file-index
+	   #:index-lookup #:index-add #:index-all-nodes
+
+	   #:safe-write-index
+
+	   #:index-error #:read-index))
 (in-package #:ldump.file-index)
 
 ;;; Each pool file has an index file associated with it.  The index
@@ -299,58 +307,3 @@ an integer offset if present or NIL if it is not."
 	  (collect (cons (subseq hashes (* i 20) (* (1+ i) 20))
 			 (make-index-node :type (aref kind-map (aref kinds i))
 					  :offset (aref offsets i)))))))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; Test routines.
-
-(defun invent-kind (num)
-  (let* ((types '#(:blob :|DIR | :dir0 :dir1 :ind0 :ind1 :ind2 :back))
-	 (index (mod num (length types))))
-    (elt types index)))
-
-(defun hash-of-int (num)
-  (hashlib:sha1-objects (princ-to-string num)))
-
-(defun add-sample (index num)
-  "Add a made up entry for the given number."
-  (index-add index
-	     (hash-of-int num)
-	     (invent-kind num)
-	     num))
-
-(defun mangle-hash (hash delta)
-  "Modify a hash by adding DELTA to it, to the last byte."
-  (let ((new-hash (copy-seq hash)))
-    (iter (for pos from (1- (length hash)) downto 0)
-	  (for element = (aref new-hash pos))
-	  (for new-element = (+ element delta))
-	  (for new-element-byte = (logand new-element 255))
-	  (setf (aref new-hash pos) new-element-byte)
-	  (until (= new-element new-element-byte)))
-    new-hash))
-
-;;; Check that number is present.
-(defun check-sample (index num)
-  "Make sure that num is in the index, and that very close hashes are
-not."
-  (let ((hash (hash-of-int num)))
-    (flet ((try (delta expected)
-	     (let ((result (index-lookup index (mangle-hash hash delta))))
-	       (unless (equalp result expected)
-		 (error "Unexpected index result: ~S, expecting ~S"
-			result expected)))))
-      (try 0 (make-index-node :type (invent-kind num) :offset num))
-      (try 1 nil)
-      (try -1 nil)
-      t)))
-
-(defun naive-test ()
-  (let ((index (make-instance 'ram-index)))
-    (iter (for i from 1 to 50000)
-	  (add-sample index i))
-    (iter (for i from 1 to 50000)
-	  (check-sample index i))
-    (safe-write-index #p"blort.idx" index #x12345)
-    (let ((findex (read-index #p"blort.idx" #x12345)))
-      (iter (for i from 1 to 50000)
-	    (check-sample findex i)))))
