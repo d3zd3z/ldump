@@ -2,7 +2,9 @@
 
 (defpackage #:ldump.pack
   (:use #:cl #:iterate)
-  (:export #:pack-le-integer #:unpack-le-integer))
+  (:export #:pack-le-integer #:unpack-le-integer
+	   #:byte-vector
+	   #:make-byte-vector))
 (in-package #:ldump.pack)
 
 (defun pack-le-integer (dest offset num bytes)
@@ -24,3 +26,8 @@ the BUFFER."
 		       (logior (ash num 8) byte))
 		  initial-value 0)))
 
+(deftype byte-vector (&optional (length '*))
+  `(vector (unsigned-byte 8) ,length))
+
+(defun make-byte-vector (length &key (initial-element 0))
+  (make-sequence 'byte-vector length :initial-element initial-element))

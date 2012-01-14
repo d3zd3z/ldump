@@ -1,7 +1,9 @@
 ;;; Hashing library, in the spirit of Python's hashlib.
 
+;;; TODO: Do we want this dependency on ldump.pack?
+
 (defpackage #:hashlib
-  (:use #:cl #:cffi #:iterate)
+  (:use #:cl #:cffi #:iterate #:ldump.pack)
   (:export #:sha1-objects
 	   #:hexify #:unhexify))
 (in-package #:hashlib)
@@ -46,8 +48,7 @@ Must free the resulting foreign pointer."
   (etypecase obj
     (string (sha1-string ctx obj))
     (keyword (sha1-string ctx (symbol-name obj)))
-    ((vector (unsigned-byte 8))
-     (sha1-vector ctx obj))))
+    (byte-vector (sha1-vector ctx obj))))
 
 (defun sha1-string (ctx string)
   "Update the SHA1 with the string data.  Convenience wrapper,
@@ -104,8 +105,7 @@ The new hash can be updated independently."))
   (etypecase thing
     (keyword (thing-to-ubv8 (symbol-name thing)))
     (string (babel:string-to-octets thing))
-    ((vector (unsigned-byte 8))
-     thing)))
+    (byte-vector thing)))
 
 (defun update-hash (hash data)
   "Update the hash with the given data.  Handles a few basic types."
@@ -132,7 +132,7 @@ given initializers."
 (defun unhexify (hex-hash)
   "Convert a hex hash back into a byte-array form."
   (check-type hex-hash (vector character 40))
-  (let ((hash (make-array 20 :element-type '(unsigned-byte 8))))
+  (let ((hash (make-byte-vector 20)))
     (iter (for byte-pos from 0)
 	  (declare (type fixnum byte-pos))
 	  (for pos from 0 to 38 by 2)

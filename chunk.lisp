@@ -35,13 +35,13 @@
   ((type :initarg :type :reader chunk-type
 	 :type keyword)
    (hash :initarg :hash
-	 :type (vector (unsigned-byte 8) 20))
+	 :type (byte-vector 20))
    (data :initarg :data
-	 :type (vector (unsigned-byte 8) *))
+	 :type byte-vector)
    (data-length :initarg :data-length
 		:type integer)
    (zdata :initarg :zdata
-	  :type (or null (vector (unsigned-byte 8) *)))))
+	  :type (or null byte-vector))))
 
 (defmethod shared-initialize :after ((instance chunk) slots
 				      &rest initargs &key type &allow-other-keys)
@@ -50,7 +50,7 @@
     (error "Chunk must have a type"))
   (check-type (slot-value instance 'type) keyword)
   (let ((packed-type (string-to-octets (symbol-name type))))
-    (check-type packed-type (vector (unsigned-byte 8) 4)))
+    (check-type packed-type (byte-vector 4)))
 
   ;; One or data or zdata must be bound.
   (or (slot-boundp instance 'data)
@@ -72,8 +72,7 @@
    "Retrieve (or compute) the data payload associated with this chunk"))
 (define-memoized-accessor chunk-data (chunk chunk) data
   (with-slots (zdata data-length) chunk
-    (let* ((dest (make-sequence '(vector (unsigned-byte 8))
-				data-length))
+    (let* ((dest (make-byte-vector data-length))
 	   (dest-len (uncompress dest zdata)))
       (unless (= data-length dest-len)
 	(error "Chunk uncompression error"))
@@ -91,7 +90,7 @@
 (defgeneric chunk-zdata (chunk))
 (define-memoized-accessor chunk-zdata (chunk chunk) zdata
   (let* ((src-len (chunk-data-length chunk))
-	 (dest (make-sequence '(vector (unsigned-byte 8)) src-len))
+	 (dest (make-byte-vector src-len))
 	 (dest-len (compress dest (chunk-data chunk)
 			     :overflow-error-p nil)))
     (cond ((null dest-len) nil)
@@ -111,8 +110,7 @@
 8-bit unsigned bytes, and should not be displaed.  It will not be
 copied, so should not be changed as long as the chunk created is
 accessible."
-  (check-type data (vector (unsigned-byte 8))
-	      "A vector of unsigned 8-bit bytes")
+  (check-type data byte-vector "A vector of unsigned 8-bit bytes")
   (assert (not (array-displacement data))
 	  (data)
 	  "Data for byte-chunks should not be displaced")
@@ -217,8 +215,7 @@ offset that data will be written."
 				 (string #\Newline))))
 
 (defparameter *chunk-padding*
-  (make-sequence '(vector (unsigned-byte 8))
-		 16 :initial-element 0))
+  (make-byte-vector 16 :initial-element 0))
 
 ;;;; The chunk header:
 ;;;;  offset  length   field
@@ -241,7 +238,7 @@ data was written to."
 		   (write-position chunk-file-write-position))
       cfile
     (let ((pos write-position)
-	  (header (make-sequence '(vector (unsigned-byte 8)) 48))
+	  (header (make-byte-vector 48))
 	  (zdata (chunk-zdata chunk))
 	  (data-len (chunk-data-length chunk)))
       (unless zdata
@@ -297,7 +294,7 @@ data was written to."
 (defun read-new-sequence (stream count)
   "Read COUNT bytes from STREAM into a new sequence.  Signals an error
 if the file was too short to read from."
-  (let* ((buffer (make-sequence '(vector (unsigned-byte 8)) count))
+  (let* ((buffer (make-byte-vector count))
 	 (read-count (read-sequence buffer stream)))
     (unless (= count read-count)
       (error (make-condition 'chunk-short-read-error)))
