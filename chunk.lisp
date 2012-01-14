@@ -291,15 +291,6 @@ data was written to."
 (define-condition chunk-corrupt-error (chunk-read-error)
   ((reason :initform "Chunk is corrupt")))
 
-(defun read-new-sequence (stream count)
-  "Read COUNT bytes from STREAM into a new sequence.  Signals an error
-if the file was too short to read from."
-  (let* ((buffer (make-byte-vector count))
-	 (read-count (read-sequence buffer stream)))
-    (unless (= count read-count)
-      (error (make-condition 'chunk-short-read-error)))
-    buffer))
-
 (defun read-chunk (cfile offset &key (verify-hash nil))
   "Read a chunk from the chunk file at the given offset.  May signal
 chunk-read-error if unable to read a chunk for some reason.
@@ -308,7 +299,7 @@ If VERIFY-HASH is true, then the hash of the read data will be
 computed, and an error signalled if there is a mismatch."
   (prepare-read cfile offset)
   (with-accessors ((stream chunk-file-stream)) cfile
-    (let* ((header (read-new-sequence stream 48))
+    (let* ((header (read-new-sequence stream 48 :on-failure-raise 'chunk-short-read-error))
 	   (magic (subseq header 0 16))
 	   (zlength (unpack-le-integer header 16 4))
 	   (length (unpack-le-integer header 20 4))
@@ -318,7 +309,8 @@ computed, and an error signalled if there is a mismatch."
       (when (mismatch *chunk-magic* magic)
 	(error (make-condition 'chunk-corrupt-error
 			       :default "Invalid magic")))
-      (let* ((payload (read-new-sequence stream zlength))
+      (let* ((payload (read-new-sequence stream zlength
+					 :on-failure-raise 'chunk-short-read-error))
 	     (chunk (if (= length #xFFFFFFFF)
 			(make-instance 'chunk
 				       :type keyword-type

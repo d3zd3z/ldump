@@ -3,8 +3,8 @@
 (defpackage #:ldump.pack
   (:use #:cl #:iterate)
   (:export #:pack-le-integer #:unpack-le-integer
-	   #:byte-vector
-	   #:make-byte-vector))
+	   #:byte-vector #:make-byte-vector
+	   #:read-new-sequence))
 (in-package #:ldump.pack)
 
 (defun pack-le-integer (dest offset num bytes)
@@ -31,3 +31,12 @@ the BUFFER."
 
 (defun make-byte-vector (length &key (initial-element 0))
   (make-sequence 'byte-vector length :initial-element initial-element))
+
+(defun read-new-sequence (stream count &key (on-failure-raise 'error))
+  "Read COUNT bytes from STREAM into a new sequence.  Signals an error
+if the file was too short to read from."
+  (let* ((buffer (make-byte-vector count))
+	 (read-count (read-sequence buffer stream)))
+    (unless (= count read-count)
+      (error (make-condition on-failure-raise)))
+    buffer))
