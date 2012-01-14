@@ -9,4 +9,5 @@
 	       (:file "pdump")
 	       (:file "pack")
 	       (:file "hashlib")
-	       (:file "chunk")))
+	       (:file "chunk")
+	       (:file "file-index")))
