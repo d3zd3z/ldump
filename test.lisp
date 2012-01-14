@@ -4,7 +4,8 @@
   (:use #:cl #:iterate #:lift
 	#:ldump
 	#:ldump.chunk)
-  (:import-from #:cl-base64 #:integer-to-base64-string))
+  (:import-from #:cl-base64 #:integer-to-base64-string)
+  (:export #:run-all-tests))
 (in-package #:ldump.test)
 
 (defvar *test-suites* ()
