@@ -15,7 +15,7 @@
 ;;; storage pool.
 
 (defpackage #:ldump.chunk
-  (:use #:cl #:iterate #:ldump #:db-zlib)
+  (:use #:cl #:iterate #:ldump #:db-zlib #:ldump.pack)
   (:import-from #:babel #:string-to-octets #:octets-to-string)
   (:import-from #:hashlib #:sha1-objects)
   (:import-from #:alexandria #:remove-from-plist)
@@ -218,25 +218,6 @@ offset that data will be written."
 (defparameter *chunk-padding*
   (make-sequence '(vector (unsigned-byte 8))
 		 16 :initial-element 0))
-
-(defun pack-le-integer (dest offset num bytes)
-  "Pack NUM in little endian format into the sequence DEST starting at
-OFFSET using BYTES.  The number is silently truncated."
-  (do ((offset offset (1+ offset))
-       (bytes bytes (1- bytes))
-       (num num (ash num -8)))
-      ((zerop bytes))
-    (setf (aref dest offset)
-	  (ldb (byte 8 0) num))))
-
-(defun unpack-le-integer (buffer offset bytes)
-  "Unpack a BYTES-byte little endian number starting at OFFSET into
-the BUFFER."
-  (iter (for pos from (+ offset (1- bytes)) downto offset)
-	(reducing (elt buffer pos)
-		  by (lambda (num byte)
-		       (logior (ash num 8) byte))
-		  initial-value 0)))
 
 ;;;; The chunk header:
 ;;;;  offset  length   field

@@ -8,4 +8,5 @@
 	       (:file "macros")
 	       (:file "pdump")
 	       (:file "hashlib")
+	       (:file "pack")
 	       (:file "chunk")))
