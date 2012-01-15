@@ -3,12 +3,11 @@
   (:import-from #:babel #:string-to-octets #:octets-to-string)
   (:export #:index-node #:index-node-type #:index-node-offset #:index-node-p #:make-index-node
 
+	   #:make-index #:load-index #:save-index
+	   #:index-error #:index-error-reason
+
 	   #:base-index #:ram-index #:file-index
-	   #:index-lookup #:index-add #:index-all-nodes
-
-	   #:safe-write-index
-
-	   #:index-error #:read-index))
+	   #:index-lookup #:index-add))
 (in-package #:ldump.file-index)
 
 ;;; Each pool file has an index file associated with it.  The index
@@ -307,3 +306,57 @@ an integer offset if present or NIL if it is not."
 	  (collect (cons (subseq hashes (* i 20) (* (1+ i) 20))
 			 (make-index-node :type (aref kind-map (aref kinds i))
 					  :offset (aref offsets i)))))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; A combo index combines a file index of the contents of a file at
+;;; the beginning with a RAM index.
+
+(defclass combo-index (base-index)
+  ((ram :type ram-index :initarg :ram :initform (make-instance 'ram-index))
+   (file :type file-index :initarg :file)
+   (path :type pathname :initarg :path)))
+
+(defmethod index-lookup ((index combo-index) hash)
+  (or (index-lookup (slot-value index 'ram) hash)
+      (and (slot-boundp index 'file)
+	   (index-lookup (slot-value index 'file) hash))))
+
+(defmethod index-add ((index combo-index) hash type offset)
+  (index-add (slot-value index 'ram) hash type offset))
+
+(defmethod index-all-nodes ((index combo-index))
+  (let ((rams (index-all-nodes (slot-value index 'ram)))
+	(files (if (slot-boundp index 'file)
+		   (index-all-nodes (slot-value index 'file))
+		   '())))
+    (nconc rams files)))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Primary API
+
+(defun make-index (path)
+  "Create an index operation to be stored at the given path.  No files
+are read."
+  (make-instance 'combo-index :path path))
+
+(defun load-index (index pool-offset)
+  "Try loading the index from it's file.  The index must have been
+written when the size was last POOL-OFFSET, or the load will fail.
+Return's true if the data could be loaded.  The second return result
+is the condition that caused the failure, or NIL if none."
+  (let ((path (slot-value index 'path)))
+    (handler-case (read-index path pool-offset)
+      ((or index-error file-error) (condition)
+	(values nil condition))
+      (:no-error (findex)
+	(setf (slot-value index 'file) findex
+	      (slot-value index 'ram) (make-instance 'ram-index))
+	(values index nil)))))
+
+(defun save-index (index pool-offset)
+  "Save this index to it's file.  The index will then be reloaded."
+  (write-index (slot-value index 'path) index pool-offset)
+  (multiple-value-bind (ok condition)
+      (load-index index pool-offset)
+    (unless ok
+      (error condition))))

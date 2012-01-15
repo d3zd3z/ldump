@@ -47,6 +47,15 @@ not."
       (try -1 nil)
       t)))
 
+(defun add-range (index a b)
+  (iter (for i from a to b)
+	(add-sample index i)))
+
+(defun check-range (index a b)
+  (iter (for i from a to b)
+	(check-sample index i)))
+
+#|
 (defun naive-test (path)
   (let ((index (make-instance 'ram-index))
 	(index-name (merge-pathnames #p"blort.idx" path)))
@@ -58,6 +67,23 @@ not."
     (let ((findex (read-index index-name #x12345)))
       (iter (for i from 1 to 50000)
 	    (check-sample findex i)))))
+|#
 
-(addtest naive
-  (naive-test tmpdir))
+(defun combo-test (path)
+  (let* ((name (merge-pathnames #p"blort.idx" path))
+	 (index (make-index name)))
+    (add-range index 1 10000)
+    (check-range index 1 10000)
+    (save-index index 10000)
+    (check-range index 1 10000)
+    (add-range index 10001 20000)
+    (check-range index 1 20000)
+    (save-index index 20000)
+    (check-range index 1 20000)
+
+    (setf index (make-index name))
+    (load-index index 20000)
+    (check-range index 1 20000)))
+
+(addtest combo
+  (combo-test tmpdir))
