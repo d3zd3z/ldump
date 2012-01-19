@@ -13,3 +13,8 @@ then returning it."
 	   (let ((,temp (progn ,@forms)))
 	     (setf (slot-value ,instance ',slot) ,temp)
 	     ,temp)))))
+
+(defmacro define-apply-macro (name func &rest args)
+  "Define a function NAME that applies FUNC to the rest of it's ARGS."
+  `(defun ,name (args)
+     (apply #',func ,@args args)))
