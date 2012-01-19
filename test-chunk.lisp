@@ -32,7 +32,7 @@
 	  (collect key into result)
 	  (finally (return (sort result #'<))))))
 
-(addtest chunk-file
+(addtest chunk-file-test
   (let* ((cfile (open-chunk-file tmpfile))
 	 (psizes (iter (for i from 1)
 		       (for size in (make-test-sizes))

@@ -22,8 +22,9 @@
   (:export #:chunk #:chunk-hash #:chunk-data #:chunk-data-length
 	   #:chunk-zdata #:chunk-type #:chunk-type-octets
 
-	   #:open-chunk-file #:chunk-file-close
+	   #:chunk-file #:open-chunk-file #:chunk-file-close
 	   #:write-chunk #:read-chunk
+	   #:chunk-file-length
 
 	   #:make-string-chunk
 	   #:make-byte-vector-chunk
