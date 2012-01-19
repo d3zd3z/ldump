@@ -2,6 +2,7 @@
   :description "Ldump stystem"
   :depends-on (:cffi :iterate :babel :alexandria :xmls :local-time
 		     :command-line-arguments
+		     :split-sequence
 
 		     :db-zlib
 		     :cl-base64 :cl-fad)
