@@ -1,7 +1,8 @@
 ;;; Backup nodes.
 
 (defpackage #:ldump.nodes
-  (:use #:cl #:iterate #:ldump #:ldump.chunk #:ldump.file-pool #:hashlib #:local-time
+  (:use #:cl #:iterate #:ldump #:ldump.chunk #:ldump.file-pool #:ldump.pack
+	#:hashlib #:local-time
 	#:alexandria #:split-sequence)
   (:import-from #:babel #:octets-to-string)
   (:export #:list-backups))
@@ -174,6 +175,28 @@ the property list of the values in the XML property list."
 (defun get-root ()
   (let* ((back (get-chunk (first (pool-backup-list)))))
     (get-chunk (backup-hash back))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;;; Directories.
+
+(defclass dir-leaf ()
+  ((entries :initarg :entries)))
+
+;;; The decoder for directory leaf nodes.
+(defmethod decode-kind ((type (eql :|dir |)) data)
+  (let ((entries (iter (with pos = 0)
+		       (with limit = (length data))
+		       (while (< pos limit))
+		       (for name-length = (unpack-be-integer data pos 2))
+		       (incf pos 2)
+		       (for name = (octets-to-string (subseq data pos (+ pos name-length))
+						     :encoding :iso-8859-1))
+		       (incf pos name-length)
+		       (for hash = (subseq data pos (+ pos 20)))
+		       (incf pos 20)
+		       (collect (cons name hash)))))
+    (make-instance 'dir-leaf :entries entries)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

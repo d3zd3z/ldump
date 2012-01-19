@@ -3,6 +3,7 @@
 (defpackage #:ldump.pack
   (:use #:cl #:iterate)
   (:export #:pack-le-integer #:unpack-le-integer
+	   #:unpack-be-integer
 	   #:byte-vector #:make-byte-vector
 	   #:read-new-sequence))
 (in-package #:ldump.pack)
@@ -21,6 +22,15 @@ OFFSET using BYTES.  The number is silently truncated."
   "Unpack a BYTES-byte little endian number starting at OFFSET into
 the BUFFER."
   (iter (for pos from (+ offset (1- bytes)) downto offset)
+	(reducing (elt buffer pos)
+		  by (lambda (num byte)
+		       (logior (ash num 8) byte))
+		  initial-value 0)))
+
+(defun unpack-be-integer (buffer offset bytes)
+  "Unpack a BYTES-byte big endian number starting at OFFSET into the
+BUFFER."
+  (iter (for pos from offset to (+ offset (1- bytes)))
 	(reducing (elt buffer pos)
 		  by (lambda (num byte)
 		       (logior (ash num 8) byte))
