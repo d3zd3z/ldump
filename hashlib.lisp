@@ -131,7 +131,8 @@ given initializers."
 
 (defun unhexify (hex-hash)
   "Convert a hex hash back into a byte-array form."
-  (check-type hex-hash (vector character 40))
+  (check-type hex-hash string)
+  (assert (= 40 (length hex-hash)))
   (let ((hash (make-byte-vector 20)))
     (iter (for byte-pos from 0)
 	  (declare (type fixnum byte-pos))
