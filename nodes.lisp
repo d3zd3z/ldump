@@ -307,43 +307,89 @@ the property list of the values in the XML property list."
 
 (defgeneric walk-node-size (node))
 
-(defun tree-size (hash)
+;;; The traversal calls visit on each node.  The visit method should
+;;; return a true value if the walker should descend its children.
+;;; The direction will be :enter during pre-order traversal, and
+;;; :leave during post-order traversal.  Note that :leave will be
+;;; called, even for nodes that don't have obvious children.
+
+(defgeneric visit (visitor node direction))
+
+(defmethod visit (visitor node direction)
+  t)
+
+(defgeneric traverse-node (node visitor))
+
+(defun traverse (hash visitor)
+  "Walk through a backup, invoking visit on each node, descending
+subnodes as directed by the visitor."
   (let ((node (get-chunk hash)))
-    (+ (walk-node-size node)
-       (chunk-data-length (slot-value node 'chunk)))))
+    (let ((traverse-children? (visit visitor node :enter)))
+      (when traverse-children?
+	(traverse-node node visitor)))
+    (visit visitor node :leave)))
 
-(defmethod walk-node-size ((node backup))
-  (tree-size (slot-value node 'hash)))
+(defmethod traverse-node ((node backup) visitor)
+  (traverse (slot-value node 'hash) visitor))
 
-(defmethod walk-node-size ((node dir-node))
-  (tree-size (slot-value node 'children)))
+(defmethod traverse-node ((node dir-node) visitor)
+  (traverse (slot-value node 'children) visitor))
 
-(defmethod walk-node-size ((node dir-leaf))
-  (iter (for (name . hash) in (slot-value node 'entries))
-	(declare (ignorable name))
-	(sum (tree-size hash))))
+(defmethod traverse-node ((node dir-leaf) visitor)
+  (dolist (item (slot-value node 'entries))
+    ;; TODO: How does the name get passed down?  It seems like it
+    ;; would be useful.
+    (traverse (cdr item) visitor)))
 
-(defmethod walk-node-size ((node file-node))
-  (tree-size (slot-value node 'data)))
+(defmethod traverse-node ((node file-node) visitor)
+  (traverse (slot-value node 'data) visitor))
 
-(defmethod walk-node-size ((node blob))
-  ;; Yes, zero.  The walk-node-size returns the size of subnodes, this
-  ;; node is included.
-  0)
-
-(defmethod walk-node-size ((node indirect-data))
+(defmethod traverse-node ((node indirect-data) visitor)
   (iter (for child in-vector (slot-value node 'children))
-	(sum (tree-size child))))
+	(traverse child visitor)))
 
-(defmethod walk-node-size ((node indirect-dir))
+(defmethod traverse-node ((node indirect-dir) visitor)
   (iter (for child in-vector (slot-value node 'children))
-	(sum (tree-size child))))
+	(traverse child visitor)))
 
-;; Other filesystem nodes have no data associated with them.
-(defmethod walk-node-size ((node filesystem-node))
-  0)
+;; Everything else has nothing to do on traversal.
+(defmethod traverse-node (node visitor))
 
-;(defgeneric traverse-node)
+;;; Simple 'du' command (reads all data, kind of dumb).
+
+(defclass du-state ()
+  ((compressed :initform 0 :type integer)
+   (uncompressed :initform 0 :type integer)))
+
+(defmethod visit ((visitor du-state) node (direction (eql :enter)))
+  (with-slots (compressed uncompressed) visitor
+    (incf compressed 1)
+    (incf uncompressed (chunk-data-length (slot-value node 'chunk))))
+  t)
+
+;;; Avoid reading the data nodes (we still need sizes eventually).
+(defmethod visit ((visitor du-state) (node indirect-data) (direction (eql :enter)))
+  (with-slots (compressed uncompressed) visitor
+    (incf compressed 1)
+    (incf uncompressed (chunk-data-length (slot-value node 'chunk)))
+    (let ((children (slot-value node 'children)))
+      (incf compressed (length children))))
+  nil)
+
+;;; We also might need to avoid reading files that contain a single
+;;; chunk of data.  For now, let's avoid reading data chunks at all,
+;;; and compare performance.
+(defmethod visit ((visitor du-state) (node file-node) (direction (eql :enter)))
+  (with-slots (compressed uncompressed) visitor
+    (incf compressed 1)
+    (incf uncompressed 1))
+  nil)
+
+(defun tree-size (hash)
+  (let ((state (make-instance 'du-state)))
+    (traverse hash state)
+    (values (slot-value state 'compressed)
+	    (slot-value state 'uncompressed))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
