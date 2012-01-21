@@ -316,6 +316,7 @@ computed, and an error signalled if there is a mismatch."
 			(make-instance 'chunk
 				       :type keyword-type
 				       :hash hash
+				       :zdata nil
 				       :data payload)
 			(make-instance 'chunk
 				       :type keyword-type
