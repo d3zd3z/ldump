@@ -5,7 +5,7 @@
 	#:hashlib #:local-time
 	#:alexandria #:split-sequence)
   (:import-from #:babel #:octets-to-string)
-  (:export #:list-backups))
+  (:export #:list-backups #:tree-size))
 (in-package #:ldump.nodes)
 
 (defgeneric decode-kind (type data)
@@ -357,39 +357,75 @@ subnodes as directed by the visitor."
 
 ;;; Simple 'du' command (reads all data, kind of dumb).
 
-(defclass du-state ()
-  ((compressed :initform 0 :type integer)
+(defclass node-information ()
+  ((type :initarg :type :type keyword)
+   (compressed :initform 0 :type integer)
    (uncompressed :initform 0 :type integer)))
 
+(defclass du-state ()
+  ((info :initform (make-hash-table) :type hash-table)))
+
+(defun du-state-information (state node-type)
+  (with-slots (info) state
+    (or (gethash node-type info)
+	(let ((new-info (make-instance 'node-information
+				       :type node-type)))
+	  (setf (gethash node-type info) new-info)))))
+
 (defmethod visit ((visitor du-state) node (direction (eql :enter)))
-  (with-slots (compressed uncompressed) visitor
-    (incf compressed 1)
-    (incf uncompressed (chunk-data-length (slot-value node 'chunk))))
+  (let ((info (du-state-information visitor (type-of node))))
+    (with-slots (compressed uncompressed) info
+      (incf compressed 1)
+      (incf uncompressed (chunk-data-length (slot-value node 'chunk)))))
   t)
 
 ;;; Avoid reading the data nodes (we still need sizes eventually).
 (defmethod visit ((visitor du-state) (node indirect-data) (direction (eql :enter)))
-  (with-slots (compressed uncompressed) visitor
-    (incf compressed 1)
-    (incf uncompressed (chunk-data-length (slot-value node 'chunk)))
-    (let ((children (slot-value node 'children)))
-      (incf compressed (length children))))
+  (let ((info (du-state-information visitor (type-of node))))
+    (with-slots (compressed uncompressed) info
+      (incf compressed 1)
+      (incf uncompressed (chunk-data-length (slot-value node 'chunk)))
+      (let ((children (slot-value node 'children)))
+	(incf compressed (length children)))))
   nil)
 
-;;; We also might need to avoid reading files that contain a single
-;;; chunk of data.  For now, let's avoid reading data chunks at all,
-;;; and compare performance.
+;;; When visiting file nodes, don't read the data itself, but do walk
+;;; down through indirect nodes.
 (defmethod visit ((visitor du-state) (node file-node) (direction (eql :enter)))
-  (with-slots (compressed uncompressed) visitor
-    (incf compressed 1)
-    (incf uncompressed 1))
-  nil)
+  (let* ((info (du-state-information visitor (type-of node)))
+	 (data-type (pool-get-type (slot-value node 'data))))
+    (with-slots (compressed uncompressed) info
+      (case data-type
+	((:|blob| :|null|)
+	 (incf compressed 1)
+	 (incf uncompressed 1)
+	 nil)
+	(t t)))))
+
+(defun pretty-size (number)
+  (iter (for suffix in '("B" "kB" "MB" "GB" "TB" "PB" "EB" "ZB" "YB"))
+	(while (>= number 1024))
+	(setf number (/ number 1024.0))
+	(finally
+	 (return (format nil "~8,3F ~A" number suffix)))))
 
 (defun tree-size (hash)
   (let ((state (make-instance 'du-state)))
     (traverse hash state)
-    (values (slot-value state 'compressed)
-	    (slot-value state 'uncompressed))))
+    (iter (for (type info) in-hashtable (slot-value state 'info))
+	  (for uncompressed = (slot-value info 'uncompressed))
+	  (for compressed = (slot-value info 'compressed))
+	  (sum compressed into compressed-sum)
+	  (sum uncompressed into uncompressed-sum)
+	  (format t "~20@A ~15d ~15d ~9@A~%" type
+		  (slot-value info 'compressed)
+		  uncompressed
+		  (pretty-size uncompressed))
+	  (finally
+	   (format t "----------~%~20A ~15d ~15d ~9@A~%"
+		   "" compressed-sum
+		   uncompressed-sum
+		   (pretty-size uncompressed-sum))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
