@@ -8,7 +8,7 @@
   (:shadowing-import-from #:alexandria #:copy-stream #:copy-file)
   (:export #:pool #:open-pool #:close-pool #:with-pool
 	   #:*current-pool*
-	   #:pool-get-chunk #:pool-backup-list))
+	   #:pool-get-chunk #:pool-get-type #:pool-backup-list))
 (in-package #:ldump.file-pool)
 
 ;;; 
@@ -35,6 +35,12 @@
 CHUNK if it is present, or NIL if not present."
   (when-let ((offset (index-lookup (pool-file-index pfile) hash)))
     (read-chunk (pool-file-cfile pfile) (index-node-offset offset))))
+
+(defun pool-file-type (pfile hash)
+  "Determine if the hash is present in this pool file, and return the
+type of the chunk if it is."
+  (when-let ((node (index-lookup (pool-file-index pfile) hash)))
+    (index-node-type node)))
 
 (defun get-data-files (dir)
   (let ((names (list-directory dir)))
@@ -76,8 +82,9 @@ CHUNK if it is present, or NIL if not present."
   `(let* (*current-pool*
 	  (,var (open-pool ,dir)))
      (unwind-protect (progn ,@body)
-       (close-pool ,var))))
+       (close-pool :pool ,var))))
 
+;;; TODO Generalize this code a bit.
 (defun pool-get-chunk (hash &key (pool *current-pool*))
   "Try to read the named chunk from the pool file."
   (with-slots (pfiles) pool
@@ -85,6 +92,13 @@ CHUNK if it is present, or NIL if not present."
       (when-let ((chunk (read-pool-file-chunk pf hash)))
 	(return-from pool-get-chunk chunk))))
   nil)
+
+(defun pool-get-type (hash &key (pool *current-pool*))
+  "Return the type of the chunk if present in the pool."
+  (with-slots (pfiles) pool
+    (dolist (pf pfiles)
+      (when-let ((type (pool-file-type pf hash)))
+	(return-from pool-get-type type)))))
 
 (defun pool-backup-list (&key (pool *current-pool*))
   "Return a list of hashes that represent backup root nodes."
