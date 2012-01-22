@@ -5,7 +5,11 @@
 	#:hashlib #:local-time
 	#:alexandria #:split-sequence)
   (:import-from #:babel #:octets-to-string)
-  (:export #:list-backups #:tree-size))
+  (:export #:list-backups #:tree-size
+
+	   #:node-name
+	   #:file-node #:dir-node #:link-node #:chr-node
+	   #:blk-node #:fifo-node #:sock-node))
 (in-package #:ldump.nodes)
 
 (defgeneric decode-kind (type data)
@@ -79,7 +83,9 @@ the property list of the values in the XML property list."
 (defclass node ()
   ((source-hash :initarg :source-hash :type (byte-vector 20)
 		:documentation "If bound, indicates this object has been stored and is addressed by the given hash.")
-   (chunk :initarg :chunk :type chunk))
+   (chunk :initarg :chunk :type chunk)
+   (name :initarg :name :type string :accessor node-name
+	 :documentation "The name associated with this node."))
   (:documentation "The parent of all nodes that are stored in the pool."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -99,12 +105,20 @@ the property list of the values in the XML property list."
 ;;; Attempt to decode a "floating" timestamp represented as an integer
 ;;; and fraction part.
 (defun real-string-to-timestamp (str)
-  (let* ((parts (split-sequence #\. str))
-	 (seconds (parse-integer (car parts)))
-	 (nanos (if-let (fraction (cadr parts))
-		  (* (parse-integer fraction)
-		     (expt 10 (- 9 (length fraction)))))))
-    (unix-to-timestamp seconds :nsec nanos)))
+  (etypecase str
+    (string (let* ((parts (split-sequence #\. str))
+		   (seconds (parse-integer (car parts)))
+		   (nanos (if-let (fraction (cadr parts))
+			    (* (parse-integer fraction)
+			       (expt 10 (- 9 (length fraction)))))))
+	      (unix-to-timestamp seconds :nsec nanos)))
+    (integer (unix-to-timestamp str))))
+
+;;; Make this into an integer.
+(defun as-integer (item)
+  (etypecase item
+    (string (parse-integer item))
+    (integer item)))
 
 ;;; TODO: These could be decoded the same as regular nodes.
 (defun plist-backup (props &optional source-hash)
@@ -164,6 +178,9 @@ the property list of the values in the XML property list."
   ((rdev :initarg rdev :type integer)
    (kind :initform "BLK")))
 
+(defclass sock-node (file-or-dir-node)
+  ((kind :initform "SOCK")))
+
 (defclass fifo-node (file-or-dir-node)
   ((kind :initform "FIFO")))
 
@@ -174,13 +191,13 @@ the property list of the values in the XML property list."
     :data #'unhexify
     :ctime #'real-string-to-timestamp
     :mtime #'real-string-to-timestamp
-    :dev #'parse-integer
-    :gid #'parse-integer
-    :uid #'parse-integer
-    :ino #'parse-integer
-    :mode #'parse-integer
-    :nlink #'parse-integer
-    :size #'parse-integer)))
+    :dev #'as-integer
+    :gid #'as-integer
+    :uid #'as-integer
+    :ino #'as-integer
+    :mode #'as-integer
+    :nlink #'as-integer
+    :size #'as-integer)))
 
 (defun decode-node-args (initargs)
   (iter (for (key . value) on initargs by #'cddr)

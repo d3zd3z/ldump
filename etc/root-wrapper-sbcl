@@ -1,0 +1,21 @@
+;;; Special hackery to run as root.
+
+;;; If we have been run from sudo, then drop our priveleges, and
+;;; startup as if the current user.
+(require 'sb-posix)
+
+(when (string= (sb-posix:getenv "SUDO_COMMAND") "/usr/bin/sbcl")
+  (let ((uid (parse-integer (sb-posix:getenv "SUDO_UID")))
+	(gid (parse-integer (sb-posix:getenv "SUDO_GID"))))
+    (format t "Switching to user ~S,~S~%" uid gid)
+    (sb-posix:setresgid gid gid 0)
+    (sb-posix:setresuid uid uid 0)
+
+    ;; Not sure where to really get this from.
+    (sb-posix:setenv "HOME" "/home/davidb" 1)
+
+    ;; ASDF has already loaded and initialized it's output
+    ;; translations for root, we can just blow this away.
+    (setf asdf::*output-translations* nil)
+    (load #p"~/.sbclrc")
+    ))
