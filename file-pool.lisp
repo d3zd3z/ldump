@@ -7,6 +7,7 @@
 	#:ldump #:ldump.chunk #:ldump.file-index)
   (:shadowing-import-from #:alexandria #:copy-stream #:copy-file)
   (:export #:pool #:open-pool #:close-pool #:with-pool
+	   #:create-pool
 	   #:*current-pool*
 	   #:pool-get-chunk #:pool-get-type #:pool-backup-list))
 (in-package #:ldump.file-pool)

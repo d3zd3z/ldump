@@ -4,4 +4,5 @@
   :serial t
   :components ((:file "test")
 	       (:file "test-chunk")
-	       (:file "test-file-index")))
+	       (:file "test-file-index")
+	       (:file "test-pool")))
