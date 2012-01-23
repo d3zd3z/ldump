@@ -1,3 +1,6 @@
+#-(or ccl sbcl)
+(error "Currently, only ccl or sbcl are supported")
+
 (defsystem #:ldump
   :description "Ldump stystem"
   :depends-on (:cffi :iterate :babel :alexandria :xmls :local-time
@@ -16,4 +19,6 @@
 	       (:file "file-index")
 	       (:file "file-pool")
 	       (:file "nodes")
+	       #+sbcl (:file "posix-sbcl")
+	       #+ccl (:file "posix-ccl")
 	       (:file "main")))
