@@ -6,6 +6,7 @@
   :depends-on (:cffi :iterate :babel :alexandria :xmls :local-time
 		     :command-line-arguments
 		     :split-sequence
+		     :uuid
 
 		     :db-zlib
 		     :cl-base64 :cl-fad)
