@@ -75,28 +75,23 @@ hash-table mapping the keys to the values."
 	  (setf (gethash key result) value))
     result))
 
-(defclass backup-properties ()
-  ((limit :initarg :limit :initform *default-limit*
-	  :type integer)
-   (uuid :initarg :uuid :type uuid:uuid)
-   (newfile :initarg :newfile :type boolean)))
-
 (defun decode-java-boolean (text)
   (cond ((string-equal text "false") nil)
 	((string-equal text "true") t)
 	(t (error "Invalid boolean value: ~S" text))))
 
-(defun decode-backup-properties (props)
+(defun decode-backup-properties (props pool)
+  "Decode the properties and store them into the attributes pool."
   (let ((uuid (gethash "uuid" props))
 	(limit (or (when-let ((p (gethash "limit" props)))
 		     (parse-integer p))
 		   *default-limit*)))
     (unless uuid
       (error "Backup doesn't contain a uuid"))
-    (make-instance 'backup-properties
-		   :uuid (uuid:make-uuid-from-string uuid)
-		   :limit limit
-		   :newfile (decode-java-boolean (gethash "newfile" props "false")))))
+    (setf (slot-value pool 'uuid) (uuid:make-uuid-from-string uuid))
+    (setf (slot-value pool 'limit) limit)
+    (setf (slot-value pool 'newfile)
+	  (decode-java-boolean (gethash "newfile" props "false")))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; 
@@ -162,9 +157,13 @@ number, returning a fresh string."
 
 (defclass pool ()
   ((dir :type pathname :initarg :dir)
-   (properties :initarg :properties :type backup-properties)
    (pfiles :initarg :pfiles)
-   (next-name :initarg :next-name :type pathname)))
+   (next-name :initarg :next-name :type pathname)
+
+   ;; Properties store in the props.txt file.
+   (limit :initarg :limit :initform *default-limit* :type integer)
+   (uuid :initarg :uuit :type uuid:uuid)
+   (newfile :initarg :newfile :type boolean)))
 
 (defvar *current-pool* "Holds the last opened pool.")
 
@@ -185,14 +184,13 @@ pool file within DIR as the first file."
 						     :name "props" :type "txt")
 				      dir))
 	 (props (read-flat-properties props-name))
-	 (properties (decode-backup-properties props))
 	 (data-names (get-data-files dir))
 	 (pfiles (mapcar #'make-pool-file data-names)))
     (mapc #'load-pool-file-index pfiles)
     (let ((pool (make-instance 'pool :pfiles pfiles :dir dir
-			       :properties properties
 			       :next-name (compute-next-name (first pfiles) dir))))
       (setf *current-pool* pool)
+      (decode-backup-properties props pool)
       pool)))
 
 (defun close-pool (&key (pool *current-pool*))

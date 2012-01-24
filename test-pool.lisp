@@ -21,8 +21,7 @@
 (addtest validate-props
   (create-pool tmpdir :limit (* 12 1024 1024) :newfile t)
   (with-pool (pool tmpdir)
-    (let ((props (slot-value pool 'ldump.file-pool::properties)))
-      (ensure-same (slot-value props 'ldump.file-pool::limit)
-		   (* 12 1024 1024))
-      (ensure (slot-value props 'ldump.file-pool::newfile))
-      (ensure (slot-boundp props 'ldump.file-pool::uuid)))))
+    (ensure-same (slot-value pool 'ldump.file-pool::limit)
+		 (* 12 1024 1024))
+    (ensure (slot-value pool 'ldump.file-pool::newfile))
+    (ensure (slot-boundp pool 'ldump.file-pool::uuid))))
