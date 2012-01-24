@@ -26,6 +26,8 @@
 	   #:write-chunk #:read-chunk
 	   #:chunk-file-length
 
+	   #:chunk-file-path
+
 	   #:make-string-chunk
 	   #:make-byte-vector-chunk
 

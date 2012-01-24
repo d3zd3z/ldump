@@ -12,10 +12,6 @@
 	   #:pool-get-chunk #:pool-get-type #:pool-backup-list))
 (in-package #:ldump.file-pool)
 
-;;; TODO: Writing to pools
-;;; TODO: Index recovery
-;;; TODO: Make pool protocol
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Pool creation.
 
@@ -135,8 +131,25 @@ type of the chunk if it is."
     (index-node-type node)))
 
 (defun get-data-files (dir)
-  (let ((names (list-directory dir)))
-    (delete "data" names :key #'pathname-type :test #'string/=)))
+  (let* ((names (list-directory dir))
+	 (names (delete "data" names :key #'pathname-type :test #'string/=)))
+    (sort names #'string> :key #'pathname-name)))
+
+(defun increment-name (name)
+  "Assuming that the name ends in digits of a number, increment that
+number, returning a fresh string."
+  (let ((result (copy-seq name)))
+    (iter (for pos downfrom (1- (length result)))
+	  (when (minusp pos)
+	    (error "Name cannot be numerically incremented: ~S" name))
+	  (for ch = (elt result pos))
+	  (when (or (char< ch #\0) (char> ch #\9))
+	    (error "Name cannot be numerically incremented: ~S" name))
+	  (when (char< ch #\9)
+	    (setf (elt result pos)
+		  (code-char (1+ (char-code ch))))
+	    (return result))
+	  (setf (elt result pos) #\0))))
 
 (defun read-backup-list (dir)
   "Read the list of completed backups."
@@ -150,9 +163,21 @@ type of the chunk if it is."
 (defclass pool ()
   ((dir :type pathname :initarg :dir)
    (properties :initarg :properties :type backup-properties)
-   (pfiles :initarg :pfiles)))
+   (pfiles :initarg :pfiles)
+   (next-name :initarg :next-name :type pathname)))
 
 (defvar *current-pool* "Holds the last opened pool.")
+
+(defun compute-next-name (last-pfile dir)
+  "If last-name is a pathname, return a new name with the number at
+the end of the name incremented.  Otherwise, make a name for a new
+pool file within DIR as the first file."
+  (if (null last-pfile)
+      (make-pathname :name "pool-data-0000" :type "data"
+		     :defaults dir)
+      (let ((name (chunk-file-path (pool-file-cfile last-pfile))))
+	(make-pathname :name (increment-name (pathname-name name))
+		       :defaults name))))
 
 (defun open-pool (dir)
   (let* ((dir (ensure-directory dir))
@@ -165,7 +190,8 @@ type of the chunk if it is."
 	 (pfiles (mapcar #'make-pool-file data-names)))
     (mapc #'load-pool-file-index pfiles)
     (let ((pool (make-instance 'pool :pfiles pfiles :dir dir
-			       :properties properties)))
+			       :properties properties
+			       :next-name (compute-next-name (first pfiles) dir))))
       (setf *current-pool* pool)
       pool)))
 
