@@ -60,6 +60,9 @@ this index.  The results are in an unspecified order."))
     (iter (for (hash node) in-hashtable nodes)
 	  (collect (cons hash node)))))
 
+(defun ram-index-empty-p (index)
+  (zerop (hash-table-count (slot-value index 'nodes))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Comparing hashes.
 
@@ -354,7 +357,10 @@ is the condition that caused the failure, or NIL if none."
 	(values index nil)))))
 
 (defun save-index (index pool-offset)
-  "Save this index to it's file.  The index will then be reloaded."
+  "Save this index to it's file.  The index will then be reloaded.
+Only writes if the index is dirty."
+  (when (ram-index-empty-p (slot-value index 'ram))
+    (return-from save-index))
   (write-index (slot-value index 'path) index pool-offset)
   (multiple-value-bind (ok condition)
       (load-index index pool-offset)

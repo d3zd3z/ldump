@@ -9,7 +9,9 @@
   (:export #:pool #:open-pool #:close-pool #:with-pool
 	   #:create-pool
 	   #:*current-pool*
-	   #:pool-get-chunk #:pool-get-type #:pool-backup-list))
+	   #:pool-get-chunk #:pool-get-type #:pool-backup-list
+	   #:write-pool-chunk
+	   #:pool-flush))
 (in-package #:ldump.file-pool)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -178,6 +180,36 @@ pool file within DIR as the first file."
 	(make-pathname :name (increment-name (pathname-name name))
 		       :defaults name))))
 
+;;; TODO: handle the 'newfile' property.
+(defun room-for-file-p (pool chunk)
+  "Returns true if there is room in the current pool to write this
+chunk."
+  (let ((pfile (first (slot-value pool 'pfiles))))
+    (and pfile
+	 (let* ((needed (chunk-write-size chunk))
+		(size-taken (chunk-file-length (pool-file-cfile pfile)))
+		(limit (slot-value pool 'limit)))
+	   (<= (+ size-taken needed) limit)))))
+
+(defun pool-flush (&optional (pool *current-pool*))
+  "Flush any pending output."
+  (with-slots (pfiles) pool
+    (let* ((first-pfile (first pfiles)))
+      (when first-pfile
+	(let ((cfile (pool-file-cfile first-pfile)))
+	  (chunk-file-flush cfile)
+	  (save-index (pool-file-index first-pfile) (chunk-file-length cfile)))))))
+
+(defun make-new-pool-file (pool)
+  "Create a new pool file in this pool."
+  (pool-flush pool)
+  (with-slots (pfiles dir next-name) pool
+    (let* ((pfile (make-pool-file next-name))
+	   (first-pfile (first pfiles))
+	   (new-name (compute-next-name first-pfile dir)))
+      (setf next-name new-name)
+      (push pfile pfiles))))
+
 (defun open-pool (dir)
   (let* ((dir (ensure-directory dir))
 	 (props-name (merge-pathnames (make-pathname :directory '(:relative "metadata")
@@ -194,6 +226,7 @@ pool file within DIR as the first file."
       pool)))
 
 (defun close-pool (&key (pool *current-pool*))
+  (pool-flush pool)
   (with-slots (pfiles)
       pool
     (dolist (pf pfiles)
@@ -223,6 +256,17 @@ pool file within DIR as the first file."
     (dolist (pf pfiles)
       (when-let ((type (pool-file-type pf hash)))
 	(return-from pool-get-type type)))))
+
+(defun write-pool-chunk (chunk &key (pool *current-pool*))
+  "Write this chunk to the pool."
+  (unless (room-for-file-p pool chunk)
+    (make-new-pool-file pool))
+  (let* ((pfile (first (slot-value pool 'pfiles)))
+	 (offset (write-chunk (pool-file-cfile pfile) chunk)))
+    (index-add (pool-file-index pfile)
+	       (chunk-hash chunk)
+	       (chunk-type chunk)
+	       offset)))
 
 (defun pool-backup-list (&key (pool *current-pool*))
   "Return a list of hashes that represent backup root nodes."

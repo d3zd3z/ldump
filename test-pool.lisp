@@ -25,3 +25,18 @@
 		 (* 12 1024 1024))
     (ensure (slot-value pool 'ldump.file-pool::newfile))
     (ensure (slot-boundp pool 'ldump.file-pool::uuid))))
+
+;;; Simple test, make sure we can write to the pool.
+(addtest simple-writes
+  (create-pool tmpdir)
+  (let ((hashes (with-pool (pool tmpdir)
+		  (iter (for size in (make-test-sizes))
+			(for chunk = (make-test-chunk size 1))
+			(collect (chunk-hash chunk))
+			(write-pool-chunk chunk)))))
+    (with-pool (pool tmpdir)
+      (iter (for size in (make-test-sizes))
+	    (for chunk = (make-test-chunk size 1))
+	    (for read-chunk = (pool-get-chunk (chunk-hash chunk)))
+	    (ensure (not (mismatch (chunk-data read-chunk)
+				   (chunk-data chunk))))))))

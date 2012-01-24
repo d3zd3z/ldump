@@ -21,9 +21,11 @@
   (:import-from #:alexandria #:remove-from-plist)
   (:export #:chunk #:chunk-hash #:chunk-data #:chunk-data-length
 	   #:chunk-zdata #:chunk-type #:chunk-type-octets
+	   #:chunk-write-size
 
 	   #:chunk-file #:open-chunk-file #:chunk-file-close
 	   #:write-chunk #:read-chunk
+	   #:chunk-file-flush
 	   #:chunk-file-length
 
 	   #:chunk-file-path
@@ -274,6 +276,15 @@ data was written to."
 	      write-position)
 
       pos)))
+
+(defun chunk-write-size (chunk)
+  "Return the number of bytes that will be needed to write this
+chunk."
+  (let* ((zdata (chunk-zdata chunk))
+	 (size (if zdata (length zdata)
+		   (chunk-data-length chunk)))
+	 (size (logandc2 (+ size 15) 15)))
+    (+ 48 size)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;; Reading chunks.
