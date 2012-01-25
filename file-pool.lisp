@@ -160,7 +160,6 @@ number, returning a fresh string."
 (defclass pool ()
   ((dir :type pathname :initarg :dir)
    (pfiles :initarg :pfiles)
-   (next-name :initarg :next-name :type pathname)
 
    ;; Properties store in the props.txt file.
    (limit :initarg :limit :initform *default-limit* :type integer)
@@ -203,11 +202,10 @@ chunk."
 (defun make-new-pool-file (pool)
   "Create a new pool file in this pool."
   (pool-flush pool)
-  (with-slots (pfiles dir next-name) pool
-    (let* ((pfile (make-pool-file next-name))
-	   (first-pfile (first pfiles))
-	   (new-name (compute-next-name first-pfile dir)))
-      (setf next-name new-name)
+  (with-slots (pfiles dir) pool
+    (let* ((first-pfile (first pfiles))
+	   (new-name (compute-next-name first-pfile dir))
+	   (pfile (make-pool-file new-name)))
       (push pfile pfiles))))
 
 (defun open-pool (dir)
@@ -219,8 +217,7 @@ chunk."
 	 (data-names (get-data-files dir))
 	 (pfiles (mapcar #'make-pool-file data-names)))
     (mapc #'load-pool-file-index pfiles)
-    (let ((pool (make-instance 'pool :pfiles pfiles :dir dir
-			       :next-name (compute-next-name (first pfiles) dir))))
+    (let ((pool (make-instance 'pool :pfiles pfiles :dir dir)))
       (setf *current-pool* pool)
       (decode-backup-properties props pool)
       pool)))

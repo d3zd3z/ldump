@@ -40,3 +40,42 @@
 	    (for read-chunk = (pool-get-chunk (chunk-hash chunk)))
 	    (ensure (not (mismatch (chunk-data read-chunk)
 				   (chunk-data chunk))))))))
+
+;;; For more complex cases, write chunks of a consistent size, with a
+;;; changing seed.  During the test, keep track of what's been written
+;;; here (we store the hash of the chunk to avoid having to recompute
+;;; it).
+(defvar *stored-chunks*)
+
+(defparameter *test-chunk-size* (* 32 1024))
+
+(defun add-chunks (lower upper)
+  "Add chunks with an index from LOWER to UPPER (inclusive)."
+  (iter (for index from lower to upper)
+	(for chunk = (make-test-chunk *test-chunk-size* index))
+	(for hash = (chunk-hash chunk))
+	(write-pool-chunk chunk)
+	(push hash *stored-chunks*)))
+
+(defun check-chunks ()
+  "Check that the chunks that were previously added are present."
+  (iter (for hash in *stored-chunks*)
+	(for chunk = (pool-get-chunk hash))
+	(ensure chunk)
+	(ensure (not (mismatch (chunk-hash chunk)
+			       hash)))))
+
+(addtest multiple-writes
+  (let (*stored-chunks*)
+    (create-pool tmpdir :limit (* 1024 1024))
+    (with-pool (pool tmpdir)
+      (add-chunks 1 200)
+      (check-chunks)
+      (add-chunks 201 400)
+      (check-chunks))
+    (with-pool (pool tmpdir)
+      (check-chunks)
+      (add-chunks 401 600)
+      (check-chunks))
+    (with-pool (pool tmpdir)
+      (check-chunks))))
