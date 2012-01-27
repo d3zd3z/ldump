@@ -298,10 +298,23 @@ the property list of the values in the XML property list."
 		   :level level
 		   :children (coerce hashes '(vector (byte-vector 20))))))
 
+;;; Three levels of indirection supports a 524PB file or directory.
 (defmethod decode-kind ((type (eql :|ind0|)) data)
   (decode-indirect 'indirect-data 0 data))
 
+(defmethod decode-kind ((type (eql :|ind1|)) data)
+  (decode-indirect 'indirect-data 0 data))
+
+(defmethod decode-kind ((type (eql :|ind2|)) data)
+  (decode-indirect 'indirect-data 0 data))
+
 (defmethod decode-kind ((type (eql :|dir0|)) data)
+  (decode-indirect 'indirect-dir 0 data))
+
+(defmethod decode-kind ((type (eql :|dir1|)) data)
+  (decode-indirect 'indirect-dir 0 data))
+
+(defmethod decode-kind ((type (eql :|dir2|)) data)
   (decode-indirect 'indirect-dir 0 data))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
