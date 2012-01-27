@@ -83,9 +83,7 @@ the property list of the values in the XML property list."
 (defclass node ()
   ((source-hash :initarg :source-hash :type (byte-vector 20)
 		:documentation "If bound, indicates this object has been stored and is addressed by the given hash.")
-   (chunk :initarg :chunk :type chunk)
-   (name :initarg :name :type string :accessor node-name
-	 :documentation "The name associated with this node."))
+   (chunk :initarg :chunk :type chunk))
   (:documentation "The parent of all nodes that are stored in the pool."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
