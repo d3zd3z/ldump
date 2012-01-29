@@ -33,6 +33,7 @@
 	   #:make-string-chunk
 	   #:make-byte-vector-chunk
 
+	   #:make-test-u8
 	   #:make-test-chunk))
 (in-package #:ldump.chunk)
 
@@ -390,6 +391,9 @@ computed, and an error signalled if there is a mismatch."
 	  ((>= pos size))
 	(replace data word :start1 pos)))
     data))
+
+(defun make-test-u8 (size index)
+  (string-to-octets (make-random-string size index)))
 
 (defun make-test-chunk (size index &optional (type :blob))
   (make-instance 'chunk :type type
