@@ -255,7 +255,7 @@ chunk."
 	(return-from pool-get-type type)))))
 
 (defun write-pool-chunk (chunk &key (pool *current-pool*))
-  "Write this chunk to the pool."
+  "Write this chunk to the pool.  Returns the hash of the item."
   (unless (room-for-file-p pool chunk)
     (make-new-pool-file pool))
   (let* ((pfile (first (slot-value pool 'pfiles)))
@@ -263,7 +263,8 @@ chunk."
     (index-add (pool-file-index pfile)
 	       (chunk-hash chunk)
 	       (chunk-type chunk)
-	       offset)))
+	       offset)
+    (chunk-hash chunk)))
 
 (defun pool-backup-list (&key (pool *current-pool*))
   "Return a list of hashes that represent backup root nodes."
