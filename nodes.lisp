@@ -7,9 +7,14 @@
   (:import-from #:babel #:octets-to-string)
   (:export #:list-backups #:tree-size
 
+	   #:write-node
+
 	   #:node-name
+	   #:blob
 	   #:file-node #:dir-node #:link-node #:chr-node
-	   #:blk-node #:fifo-node #:sock-node))
+	   #:blk-node #:fifo-node #:sock-node
+
+	   #:indirect-builder #:indirect-append #:indirect-finish))
 (in-package #:ldump.nodes)
 
 (defgeneric decode-kind (type data)
@@ -42,6 +47,29 @@ type."))
 (defun unkeywordify-alist (alist)
   (iter (for (key . value) in alist)
 	(collect (cons (unkeywordify key) value))))
+
+(defun maybe-unhexify (item)
+  (etypecase item
+    (string (unhexify item))
+    ((byte-vector 20) item)))
+
+(defgeneric encode-node (node)
+  (:documentation "Convert this node into it's payload.  Should return
+the node type and the data."))
+
+(defun write-node (node)
+  "Write this node out, and return the hash identifying it.  Will also
+fill in the source-hash and chunk slots of the node."
+  (multiple-value-bind (type data)
+      (encode-node node)
+    (let* ((chunk (make-byte-vector-chunk type data))
+	   (hash (chunk-hash chunk)))
+      ;; TODO: Should the pool be doing the deduping, in case the pool is remote?
+      (unless (pool-get-type hash)
+	(write-pool-chunk chunk))
+      (setf (slot-value node 'source-hash) hash
+	    (slot-value node 'chunk) chunk)
+      hash)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; Decoding XML into a property list.
@@ -104,6 +132,7 @@ the property list of the values in the XML property list."
 ;;; and fraction part.
 (defun real-string-to-timestamp (str)
   (etypecase str
+    (timestamp str)
     (string (let* ((parts (split-sequence #\. str))
 		   (seconds (parse-integer (car parts)))
 		   (nanos (if-let (fraction (cadr parts))
@@ -185,8 +214,8 @@ the property list of the values in the XML property list."
 (defparameter *node-decoders*
   (plist-hash-table
    (list
-    :children #'unhexify
-    :data #'unhexify
+    :children #'maybe-unhexify
+    :data #'maybe-unhexify
     :ctime #'real-string-to-timestamp
     :mtime #'real-string-to-timestamp
     :dev #'as-integer
@@ -280,6 +309,11 @@ the property list of the values in the XML property list."
 (defmethod decode-kind ((type (eql :|blob|)) data)
   (make-instance 'blob :payload data))
 
+(defmethod encode-node ((node blob))
+  (with-slots (payload) node
+    (values (if (length= 0 payload) :|null| :|blob|)
+	    payload)))
+
 (defclass indirect-data (node)
   ((level :initarg :level :type integer)
    (children :initarg :children :type (vector (byte-vector 20)))))
@@ -316,6 +350,90 @@ the property list of the values in the XML property list."
 
 (defmethod decode-kind ((type (eql :|dir2|)) data)
   (decode-indirect 'indirect-dir 0 data))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; Indirect builders.
+;;; To use these, construct a builder with:
+;;;   (make-instance 'indirect-builder :prefix "ind")
+;;;
+;;; Then, call (indirect-append builder hash) for each hash
+;;; representing a leaf node that has been added.
+;;;
+;;; Finally, call (indirect-finish builder) to flush everything out,
+;;; and return the final hash representing the sequence.
+
+(defparameter *indirect-limit* (floor (* 256 1024) 20))
+
+(defclass indirect-builder ()
+  ((prefix :initarg :prefix :type (string 3))
+   (buffers :initform (make-array 1 :adjustable t :fill-pointer 1
+				  :initial-element (make-array 0 :adjustable t :fill-pointer 0
+							       :element-type '(byte-vector 20))))))
+
+(defun indirect-push (builder hash)
+  (with-slots (buffers) builder
+    (let ((buf (make-array 0 :adjustable t :fill-pointer 0
+			   :element-type '(byte-vector 20))))
+      (vector-push-extend buf buffers)
+      (vector-push-extend hash buf))))
+
+(defun indirect-name (builder level)
+  (with-slots (prefix) builder
+    (intern (format nil "~A~D" prefix level)
+	    "KEYWORD")))
+
+(defun indirect-summarize (builder buffer level)
+  "Summarize BUFFER at LEVEL, returning the hash of the summary."
+  (with-slots (buffers) builder
+    (cond ((length= buffer 0)
+	   (unless (zerop level)
+	     (error "Internal error: Empty hash buffer at non-zero level."))
+	   ;; Empty chunk is allowed, but only at the first level.
+	   (let* ((chunk (make-string-chunk :|null| ""))
+		  (hash (write-pool-chunk chunk)))
+	     hash))
+	  ((length= buffer 1)
+	   ;; If there is a single hash, just use it instead of making
+	   ;; an indirect block of one element.
+	   (first-elt buffer))
+	  (t
+	   ;; Otherwise, make a new chunk out of the data.
+	   (let* ((data (iter (with dest = (make-byte-vector (* 20 (length buffer))))
+			      (for src in-sequence buffer)
+			      (for dpos from 0 by 20)
+			      (replace dest src :start1 dpos)
+			      (finally (return dest))))
+		  (chunk (make-byte-vector-chunk (indirect-name builder level)
+						 data))
+		  (hash (write-pool-chunk chunk)))
+	     hash)))))
+
+(defun indirect-append (builder hash &optional (level 0))
+  "Add the given indirect at the specified level.  Level 0 indicates a
+hash of a data block."
+  (with-slots (buffers) builder
+    (cond ((zerop (length buffers))
+	   (indirect-push builder hash))
+	  ((length= *indirect-limit* (last-elt buffers))
+	   (let ((summary-hash (indirect-summarize builder (vector-pop buffers) (1+ level))))
+	     (indirect-append builder summary-hash (1+ level))
+	     (indirect-push builder hash)))
+	  (t (vector-push-extend hash (last-elt buffers))))))
+
+(defun indirect-finish (builder)
+  "Flush out any remaining indirect blocks, and return the final
+resultant hash."
+  (with-slots (buffers) builder
+    (when (length= 0 buffers)
+      (error "Empty indirect-builder."))
+
+    ;; Collapse the buffers.
+    (iter (while (> (length buffers) 1))
+	  (for level from 0)
+	  (let ((tmp (vector-pop buffers)))
+	    (indirect-append builder (indirect-summarize builder tmp (1+ level))
+			     (1+ level))))
+    (indirect-summarize builder (vector-pop buffers) 0)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
