@@ -3,7 +3,7 @@
   (:import-from #:babel #:string-to-octets #:octets-to-string)
   (:export #:index-node #:index-node-type #:index-node-offset #:index-node-p #:make-index-node
 
-	   #:make-index #:load-index #:save-index
+	   #:make-index #:load-index #:save-index #:clear-index
 	   #:index-error #:index-error-reason
 
 	   #:base-index #:ram-index #:file-index
@@ -355,6 +355,13 @@ is the condition that caused the failure, or NIL if none."
 	(setf (slot-value index 'file) findex
 	      (slot-value index 'ram) (make-instance 'ram-index))
 	(values index nil)))))
+
+(defun clear-index (index)
+  "Clear out any data associated with this index.  The index will
+contain no file index, and the RAM index will be empty.  The path will
+be the same."
+  (setf (slot-value index 'ram) (make-instance 'ram-index))
+  (slot-makunbound index 'file))
 
 (defun save-index (index pool-offset)
   "Save this index to it's file.  The index will then be reloaded.

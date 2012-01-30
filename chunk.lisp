@@ -24,7 +24,7 @@
 	   #:chunk-write-size
 
 	   #:chunk-file #:open-chunk-file #:chunk-file-close
-	   #:write-chunk #:read-chunk
+	   #:write-chunk #:read-chunk #:read-chunk-info
 	   #:chunk-file-flush
 	   #:chunk-file-length
 
@@ -306,12 +306,11 @@ chunk."
 (define-condition chunk-corrupt-error (chunk-read-error)
   ((reason :initform "Chunk is corrupt")))
 
-(defun read-chunk (cfile offset &key (verify-hash nil))
-  "Read a chunk from the chunk file at the given offset.  May signal
-chunk-read-error if unable to read a chunk for some reason.
-
-If VERIFY-HASH is true, then the hash of the read data will be
-computed, and an error signalled if there is a mismatch."
+(defun read-chunk-header (cfile offset)
+  "Read the chunk header at OFFSET in CFILE.  Returns 4 values:
+ZLENGTH, LENGTH, TYPE and HASH, as two integers, a keyword, and a
+byte-vector.  Will signal a chunk-read-error if there is a problem
+reading the chunk."
   (prepare-read cfile offset)
   (with-accessors ((stream chunk-file-stream)) cfile
     (let* ((header (read-new-sequence stream 48 :on-failure-raise 'chunk-short-read-error))
@@ -324,6 +323,17 @@ computed, and an error signalled if there is a mismatch."
       (when (mismatch *chunk-magic* magic)
 	(error (make-condition 'chunk-corrupt-error
 			       :default "Invalid magic")))
+      (values zlength length keyword-type hash))))
+
+(defun read-chunk (cfile offset &key (verify-hash nil))
+  "Read a chunk from the chunk file at the given offset.  May signal
+chunk-read-error if unable to read a chunk for some reason.
+
+If VERIFY-HASH is true, then the hash of the read data will be
+computed, and an error signalled if there is a mismatch."
+  (with-accessors ((stream chunk-file-stream)) cfile
+    (multiple-value-bind (zlength length keyword-type hash)
+	(read-chunk-header cfile offset)
       (let* ((payload (read-new-sequence stream zlength
 					 :on-failure-raise 'chunk-short-read-error))
 	     (chunk (if (= length #xFFFFFFFF)
@@ -345,6 +355,19 @@ computed, and an error signalled if there is a mismatch."
 	    (error (make-condition 'chunk-corrupt-error
 				   :detail "Hash verification error"))))
 	chunk))))
+
+(defun read-chunk-info (cfile offset)
+  "Read the header of the chunk at OFFSET from CFILE.  Returns the
+type of the chunk, and the offset of the next chunk in the input
+stream."
+  (with-accessors ((stream chunk-file-stream)) cfile
+    (multiple-value-bind (zlength length keyword-type hash)
+	(read-chunk-header cfile offset)
+      (declare (ignorable length))
+      (values keyword-type
+	      hash
+	      (+ (file-position stream)
+		 (logandc2 (+ zlength 15) 15))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

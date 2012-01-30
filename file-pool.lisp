@@ -106,14 +106,30 @@ hash-table mapping the keys to the values."
   (cfile nil :type chunk-file)
   (index nil :type base-index))
 
+(defun reindex-pool-file (pfile)
+  "Create a new index for this chunk file."
+  (let* ((cfile (pool-file-cfile pfile))
+	 (index (pool-file-index pfile))
+	 (length (chunk-file-length cfile)))
+    (warn "Re-indexing ~S" (chunk-file-path cfile))
+    (clear-index index)
+    (iter (with pos = 0)
+	  (until (= pos length))
+	  (for (values type hash next-pos) = (read-chunk-info cfile pos))
+	  (index-add index hash type pos)
+	  (setf pos next-pos))
+    (save-index index length)))
+
 (defun load-pool-file-index (pfile)
   (with-accessors ((cfile pool-file-cfile)
 		   (index pool-file-index))
       pfile
     (multiple-value-bind (ok err)
 	(load-index index (chunk-file-length cfile))
+      (declare (ignorable err))
       (unless ok
-	(error err)))))
+	;; Try once to reindex this file.
+	(reindex-pool-file pfile)))))
 
 (defun read-pool-file-chunk (pfile hash)
   "Try to read the named chunk from the pool file.  Returns either a

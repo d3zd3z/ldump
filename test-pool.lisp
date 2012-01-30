@@ -79,3 +79,34 @@
       (check-chunks))
     (with-pool (pool tmpdir)
       (check-chunks))))
+
+(addtest missing-index
+  (let (*stored-chunks*)
+    (create-pool tmpdir)
+    (with-pool (pool tmpdir)
+      (add-chunks 1 10))
+    (let ((index (make-pathname :name "pool-data-0000"
+				:type "idx"
+				:directory tmpdir)))
+      (ensure (probe-file index))
+      (delete-file index)
+      (ensure (not (probe-file index))))
+    (with-pool (pool tmpdir)
+      (check-chunks))))
+
+(addtest truncated-index
+  (let (*stored-chunks*)
+    (create-pool tmpdir)
+    (with-pool (pool tmpdir)
+      (add-chunks 1 10))
+    (let* ((index (make-pathname :name "pool-data-0000"
+				 :type "idx"
+				 :directory tmpdir))
+	   (tmp (make-pathname :type "tmp111" :defaults index)))
+      (cl-fad:copy-file index tmp)
+      (with-pool (pool tmpdir)
+	(add-chunks 11 20)
+	(check-chunks))
+      (cl-fad:copy-file tmp index :overwrite t)
+      (with-pool (pool tmpdir)
+	(check-chunks)))))
