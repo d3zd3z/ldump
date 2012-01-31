@@ -26,6 +26,7 @@ argument moved to the end with &key."
   (let ((generic-name (symbolicate "%" name)))
     `(progn
        (defgeneric ,generic-name (,pool ,@others))
+       (declaim (inline ,name))
        (defun ,name (,@others &key (,pool *current-pool*))
 	 (,generic-name ,pool ,@others)))))
 
