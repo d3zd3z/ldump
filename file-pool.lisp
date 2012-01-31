@@ -7,7 +7,7 @@
 	#:ldump.pool
 	#:ldump #:ldump.chunk #:ldump.file-index)
   (:shadowing-import-from #:alexandria #:copy-stream #:copy-file)
-  (:export #:file-pool #:create-pool))
+  (:export #:file-pool #:create-file-pool))
 (in-package #:ldump.file-pool)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -34,7 +34,7 @@ directory, and return it.  Otherwise, it raises an error."
 
 (defparameter *default-limit* (* 640 1024 1024))
 
-(defun create-pool (path &key (limit *default-limit*) newfile)
+(defun create-file-pool (path &key (limit *default-limit*) newfile)
   "Create a new pool in PATH, which must be an empty directory.  LIMIT
 indicates the larges size an individual pool file can grow (which must
 be less than 2GB).  if NEWFILE is true, then each open of the pool

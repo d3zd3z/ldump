@@ -8,7 +8,7 @@
 
 (addtest must-directory
   (ensure-error
-    (create-pool (merge-pathnames (make-pathname :directory '(:relative "tmp"))
+    (create-file-pool (merge-pathnames (make-pathname :directory '(:relative "tmp"))
 				  tmpdir))))
 
 (addtest must-be-empty
@@ -16,10 +16,10 @@
     (with-open-file (stream (merge-pathnames (make-pathname :name "tmp")
 					     tmpdir))
       (write-string "hello" stream))
-    (create-pool tmpdir)))
+    (create-file-pool tmpdir)))
 
 (addtest validate-props
-  (create-pool tmpdir :limit (* 12 1024 1024) :newfile t)
+  (create-file-pool tmpdir :limit (* 12 1024 1024) :newfile t)
   (with-pool (pool 'file-pool :dir tmpdir)
     (ensure-same (slot-value pool 'ldump.file-pool::limit)
 		 (* 12 1024 1024))
@@ -28,7 +28,7 @@
 
 ;;; Simple test, make sure we can write to the pool.
 (addtest simple-writes
-  (create-pool tmpdir)
+  (create-file-pool tmpdir)
   (let ((hashes (with-pool (pool 'file-pool :dir tmpdir)
 		  (iter (for size in (make-test-sizes))
 			(for chunk = (make-test-chunk size 1))
@@ -67,7 +67,7 @@
 
 (addtest multiple-writes
   (let (*stored-chunks*)
-    (create-pool tmpdir :limit (* 1024 1024))
+    (create-file-pool tmpdir :limit (* 1024 1024))
     (with-pool (pool 'file-pool :dir tmpdir)
       (add-chunks 1 200)
       (check-chunks)
@@ -82,7 +82,7 @@
 
 (addtest missing-index
   (let (*stored-chunks*)
-    (create-pool tmpdir)
+    (create-file-pool tmpdir)
     (with-pool (pool 'file-pool :dir tmpdir)
       (add-chunks 1 10))
     (let ((index (make-pathname :name "pool-data-0000"
@@ -96,7 +96,7 @@
 
 (addtest truncated-index
   (let (*stored-chunks*)
-    (create-pool tmpdir)
+    (create-file-pool tmpdir)
     (with-pool (pool 'file-pool :dir tmpdir)
       (add-chunks 1 10))
     (let* ((index (make-pathname :name "pool-data-0000"
