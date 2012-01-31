@@ -4,14 +4,10 @@
   (:use #:cl #:iterate #:cl-fad
 	#:alexandria
 	#:hashlib
+	#:ldump.pool
 	#:ldump #:ldump.chunk #:ldump.file-index)
   (:shadowing-import-from #:alexandria #:copy-stream #:copy-file)
-  (:export #:pool #:open-pool #:close-pool #:with-pool
-	   #:create-pool
-	   #:*current-pool*
-	   #:pool-get-chunk #:pool-get-type #:pool-backup-list
-	   #:write-pool-chunk
-	   #:pool-flush))
+  (:export #:file-pool #:create-pool))
 (in-package #:ldump.file-pool)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -173,7 +169,7 @@ number, returning a fresh string."
     (iter (for line in-file name using #'read-line)
 	  (collect (hashlib:unhexify line)))))
 
-(defclass pool ()
+(defclass file-pool (pool)
   ((dir :type pathname :initarg :dir)
    (pfiles :initarg :pfiles)
 
@@ -181,8 +177,6 @@ number, returning a fresh string."
    (limit :initarg :limit :initform *default-limit* :type integer)
    (uuid :initarg :uuit :type uuid:uuid)
    (newfile :initarg :newfile :type boolean)))
-
-(defvar *current-pool* "Holds the last opened pool.")
 
 (defun compute-next-name (last-pfile dir)
   "If last-name is a pathname, return a new name with the number at
@@ -206,7 +200,7 @@ chunk."
 		(limit (slot-value pool 'limit)))
 	   (<= (+ size-taken needed) limit)))))
 
-(defun pool-flush (&optional (pool *current-pool*))
+(defmethod %pool-flush ((pool file-pool))
   "Flush any pending output."
   (with-slots (pfiles) pool
     (let* ((first-pfile (first pfiles)))
@@ -217,14 +211,14 @@ chunk."
 
 (defun make-new-pool-file (pool)
   "Create a new pool file in this pool."
-  (pool-flush pool)
+  (%pool-flush pool)
   (with-slots (pfiles dir) pool
     (let* ((first-pfile (first pfiles))
 	   (new-name (compute-next-name first-pfile dir))
 	   (pfile (make-pool-file new-name)))
       (push pfile pfiles))))
 
-(defun open-pool (dir)
+(defmethod open-pool ((type (eql 'file-pool)) &key dir &allow-other-keys)
   (let* ((dir (ensure-directory dir))
 	 (props-name (merge-pathnames (make-pathname :directory '(:relative "metadata")
 						     :name "props" :type "txt")
@@ -233,13 +227,13 @@ chunk."
 	 (data-names (get-data-files dir))
 	 (pfiles (mapcar #'make-pool-file data-names)))
     (mapc #'load-pool-file-index pfiles)
-    (let ((pool (make-instance 'pool :pfiles pfiles :dir dir)))
+    (let ((pool (make-instance 'file-pool :pfiles pfiles :dir dir)))
       (setf *current-pool* pool)
       (decode-backup-properties props pool)
       pool)))
 
-(defun close-pool (&key (pool *current-pool*))
-  (pool-flush pool)
+(defmethod %close-pool ((pool file-pool))
+  (%pool-flush pool)
   (with-slots (pfiles)
       pool
     (dolist (pf pfiles)
@@ -248,29 +242,22 @@ chunk."
   (when (eq pool *current-pool*)
     (setf *current-pool* nil)))
 
-(defmacro with-pool ((var dir) &body body)
-  `(let* (*current-pool*
-	  (,var (open-pool ,dir)))
-     (unwind-protect (progn ,@body)
-       (close-pool :pool ,var))))
-
-;;; TODO Generalize this code a bit.
-(defun pool-get-chunk (hash &key (pool *current-pool*))
+(defmethod %pool-get-chunk ((pool file-pool) hash)
   "Try to read the named chunk from the pool file."
   (with-slots (pfiles) pool
     (dolist (pf pfiles)
       (when-let ((chunk (read-pool-file-chunk pf hash)))
-	(return-from pool-get-chunk chunk))))
+	(return-from %pool-get-chunk chunk))))
   nil)
 
-(defun pool-get-type (hash &key (pool *current-pool*))
+(defmethod %pool-get-type ((pool file-pool) hash)
   "Return the type of the chunk if present in the pool."
   (with-slots (pfiles) pool
     (dolist (pf pfiles)
       (when-let ((type (pool-file-type pf hash)))
-	(return-from pool-get-type type)))))
+	(return-from %pool-get-type type)))))
 
-(defun write-pool-chunk (chunk &key (pool *current-pool*))
+(defmethod %write-pool-chunk ((pool file-pool) chunk)
   "Write this chunk to the pool.  Returns the hash of the item."
   (unless (room-for-file-p pool chunk)
     (make-new-pool-file pool))
@@ -282,7 +269,7 @@ chunk."
 	       offset)
     (chunk-hash chunk)))
 
-(defun pool-backup-list (&key (pool *current-pool*))
+(defmethod %pool-backup-list ((pool file-pool))
   "Return a list of hashes that represent backup root nodes."
   (with-slots (dir) pool
     (read-backup-list dir)))

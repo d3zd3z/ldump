@@ -20,7 +20,7 @@
 
 (addtest validate-props
   (create-pool tmpdir :limit (* 12 1024 1024) :newfile t)
-  (with-pool (pool tmpdir)
+  (with-pool (pool 'file-pool :dir tmpdir)
     (ensure-same (slot-value pool 'ldump.file-pool::limit)
 		 (* 12 1024 1024))
     (ensure (slot-value pool 'ldump.file-pool::newfile))
@@ -29,12 +29,12 @@
 ;;; Simple test, make sure we can write to the pool.
 (addtest simple-writes
   (create-pool tmpdir)
-  (let ((hashes (with-pool (pool tmpdir)
+  (let ((hashes (with-pool (pool 'file-pool :dir tmpdir)
 		  (iter (for size in (make-test-sizes))
 			(for chunk = (make-test-chunk size 1))
 			(collect (chunk-hash chunk))
 			(write-pool-chunk chunk)))))
-    (with-pool (pool tmpdir)
+    (with-pool (pool 'file-pool :dir tmpdir)
       (iter (for size in (make-test-sizes))
 	    (for chunk = (make-test-chunk size 1))
 	    (for read-chunk = (pool-get-chunk (chunk-hash chunk)))
@@ -68,22 +68,22 @@
 (addtest multiple-writes
   (let (*stored-chunks*)
     (create-pool tmpdir :limit (* 1024 1024))
-    (with-pool (pool tmpdir)
+    (with-pool (pool 'file-pool :dir tmpdir)
       (add-chunks 1 200)
       (check-chunks)
       (add-chunks 201 400)
       (check-chunks))
-    (with-pool (pool tmpdir)
+    (with-pool (pool 'file-pool :dir tmpdir)
       (check-chunks)
       (add-chunks 401 600)
       (check-chunks))
-    (with-pool (pool tmpdir)
+    (with-pool (pool 'file-pool :dir tmpdir)
       (check-chunks))))
 
 (addtest missing-index
   (let (*stored-chunks*)
     (create-pool tmpdir)
-    (with-pool (pool tmpdir)
+    (with-pool (pool 'file-pool :dir tmpdir)
       (add-chunks 1 10))
     (let ((index (make-pathname :name "pool-data-0000"
 				:type "idx"
@@ -91,22 +91,22 @@
       (ensure (probe-file index))
       (delete-file index)
       (ensure (not (probe-file index))))
-    (with-pool (pool tmpdir)
+    (with-pool (pool 'file-pool :dir tmpdir)
       (check-chunks))))
 
 (addtest truncated-index
   (let (*stored-chunks*)
     (create-pool tmpdir)
-    (with-pool (pool tmpdir)
+    (with-pool (pool 'file-pool :dir tmpdir)
       (add-chunks 1 10))
     (let* ((index (make-pathname :name "pool-data-0000"
 				 :type "idx"
 				 :directory tmpdir))
 	   (tmp (make-pathname :type "tmp111" :defaults index)))
       (cl-fad:copy-file index tmp)
-      (with-pool (pool tmpdir)
+      (with-pool (pool 'file-pool :dir tmpdir)
 	(add-chunks 11 20)
 	(check-chunks))
       (cl-fad:copy-file tmp index :overwrite t)
-      (with-pool (pool tmpdir)
+      (with-pool (pool 'file-pool :dir tmpdir)
 	(check-chunks)))))

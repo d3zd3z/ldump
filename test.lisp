@@ -5,7 +5,7 @@
 	#:ldump
 	#:ldump.chunk
 	#:ldump.file-index
-	#:ldump.file-pool)
+	#:ldump.pool #:ldump.file-pool)
   (:import-from #:cl-base64 #:integer-to-base64-string)
   (:export #:run-all-tests))
 (in-package #:ldump.test)

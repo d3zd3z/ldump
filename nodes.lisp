@@ -1,7 +1,7 @@
 ;;; Backup nodes.
 
 (defpackage #:ldump.nodes
-  (:use #:cl #:iterate #:ldump #:ldump.chunk #:ldump.file-pool #:ldump.pack
+  (:use #:cl #:iterate #:ldump #:ldump.chunk #:ldump.pool #:ldump.pack
 	#:hashlib #:local-time
 	#:alexandria #:split-sequence)
   (:import-from #:babel #:octets-to-string)

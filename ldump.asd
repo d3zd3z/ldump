@@ -18,6 +18,7 @@
 	       (:file "hashlib")
 	       (:file "chunk")
 	       (:file "file-index")
+	       (:file "pool")
 	       (:file "file-pool")
 	       (:file "nodes")
 	       #+sbcl (:file "posix-sbcl")

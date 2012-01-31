@@ -1,17 +1,17 @@
 ;;; Command-line invocation.
 
 (defpackage #:ldump.main
-  (:use #:cl #:iterate #:ldump #:ldump.file-pool #:ldump.nodes
+  (:use #:cl #:iterate #:ldump #:ldump.pool #:ldump.file-pool #:ldump.nodes
 	#:command-line-arguments #:hashlib)
   (:export #:main #:main-list #:main-tree-size))
 (in-package #:ldump.main)
 
 (defun main-list (pool-path)
-  (with-pool (pool (cl-fad:pathname-as-directory pool-path))
+  (with-pool (pool 'file-pool :dir (cl-fad:pathname-as-directory pool-path))
     (list-backups)))
 
 (defun main-tree-size (pool-path hash)
-  (with-pool (pool (cl-fad:pathname-as-directory pool-path))
+  (with-pool (pool 'file-pool :dir (cl-fad:pathname-as-directory pool-path))
     (tree-size (unhexify hash))))
 
 (defun main ()
