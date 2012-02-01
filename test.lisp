@@ -16,7 +16,9 @@
 (defun run-all-tests (&key return-errors)
   (dolist (test *test-suites*)
     (let ((result (run-tests :suite test)))
-      (when return-errors
+      (when (and return-errors
+		 (or (failures result)
+		     (errors result)))
 	(return-from run-all-tests result))
       (when (failures result)
 	(error "Failures in test: ~S" test))
