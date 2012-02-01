@@ -4,7 +4,7 @@
   (:use #:cl #:iterate #:ldump #:ldump.chunk #:ldump.pool #:ldump.pack
 	#:hashlib #:local-time
 	#:alexandria #:split-sequence)
-  (:import-from #:babel #:octets-to-string)
+  (:import-from #:babel #:octets-to-string #:string-to-octets)
   (:export #:list-backups #:tree-size
 
 	   #:write-node
@@ -226,6 +226,19 @@ the property list of the values in the XML property list."
     :nlink #'as-integer
     :size #'as-integer)))
 
+(defgeneric encode-slot (slot))
+
+(defmethod encode-slot ((slot vector))
+  (hexify slot))
+
+(defmethod encode-slot ((slot timestamp))
+  (let ((seconds (timestamp-to-unix slot))
+	(nsec (nsec-of slot)))
+    (format nil "~D.~9,'0D" seconds nsec)))
+
+(defmethod encode-slot ((slot integer))
+  (princ-to-string slot))
+
 (defun decode-node-args (initargs)
   (iter (for (key . value) on initargs by #'cddr)
 	(setf value (car value))
@@ -265,6 +278,31 @@ the property list of the values in the XML property list."
 (defun get-root ()
   (let* ((back (get-chunk (first (pool-backup-list)))))
     (get-chunk (slot-value back 'hash))))
+
+;;; Filesystem nodes are all converted into particular XML data.
+(defun get-interesting-slots (node)
+  "Get the \"interesting\" slots out of the node.  Removes the slots
+that don't contain actual data we want to backup."
+  (let ((slots (mopu:slot-names node)))
+    (remove-if (lambda (item)
+		 (member item '(source-hash chunk kind)))
+	       slots)))
+
+(defparameter *xml-header*
+  (string-to-octets "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
+"))
+
+(defmethod encode-node ((node filesystem-node))
+  (let* ((slot-names (get-interesting-slots node))
+	 (slot-names (sort slot-names #'string< :key #'symbol-name))
+	 (sxml `("node" (("kind" ,(slot-value node 'kind)))
+			,@(iter (for slot-name in slot-names)
+				(for name = (unkeywordify slot-name))
+				(for value = (encode-slot (slot-value node slot-name)))
+				(collect `("entry" (("key" ,name))
+						   ,value)))))
+	 (xml (xmls:toxml sxml)))
+    (concatenate 'byte-vector *xml-header* (string-to-octets xml))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

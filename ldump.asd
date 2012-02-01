@@ -8,6 +8,8 @@
 		     :split-sequence
 		     :uuid
 
+		     :closer-mop :moptilities
+
 		     :db-zlib
 		     :cl-base64 :cl-fad)
   :serial t
