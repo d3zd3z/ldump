@@ -17,6 +17,18 @@ PGVudHJ5IGtleT0ibmxpbmsiPjE8L2VudHJ5PjxlbnRyeSBrZXk9InNpemUiPjE4
 PC9lbnRyeT48ZW50cnkga2V5PSJ1aWQiPjEwMDA8L2VudHJ5Pjwvbm9kZT4=")
   "A backup node (in XML form).")
 
+(defparameter *sample-back-node*
+  (cl-base64:base64-string-to-usb8-array
+   "PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iVVRGLTgiIHN0YW5kYWxvbmU9
+Im5vIj8+CjwhRE9DVFlQRSBwcm9wZXJ0aWVzIFNZU1RFTSAiaHR0cDovL2phdmEu
+c3VuLmNvbS9kdGQvcHJvcGVydGllcy5kdGQiPgo8cHJvcGVydGllcz4KPGNvbW1l
+bnQ+QmFja3VwPC9jb21tZW50Pgo8ZW50cnkga2V5PSJfZGF0ZSI+MTMyODA3NzAy
+NjIxNzwvZW50cnk+CjxlbnRyeSBrZXk9ImtpbmQiPnNuYXBzaG90PC9lbnRyeT4K
+PGVudHJ5IGtleT0iYmFzZSI+dGVzdDwvZW50cnk+CjxlbnRyeSBrZXk9Imhhc2gi
+PmQ4ZDZiZTIwNzI2YjBiZDlhYjUzOThkYTg2NWRmMTJlODY4NDUxYWQ8L2VudHJ5
+Pgo8L3Byb3BlcnRpZXM+Cg==")
+  "A 'back' node in XML form.")
+
 (defun to-node-and-back (kind payload)
   (let ((node (ldump.nodes::decode-kind kind payload)))
     (ldump.nodes::encode-node node)))
@@ -30,3 +42,12 @@ PC9lbnRyeT48ZW50cnkga2V5PSJ1aWQiPjEwMDA8L2VudHJ5Pjwvbm9kZT4=")
   (ensure-null (mismatch ldump.test.nodes::*sample-node*
 			 (ldump.test.nodes::to-node-and-back
 			  :|node| ldump.test.nodes::*sample-node*))))
+
+;;; The backup nodes are a little harder to test, since the round-trip
+;;; doesn't quite work.  A little trick helps, though, and it does
+;;; catch many errors.  The main thing missed is if information is
+;;; lost.
+(addtest backup-node-roundtrip
+  (let* ((a (ldump.test.nodes::to-node-and-back :|back| ldump.test.nodes::*sample-back-node*))
+	 (b (ldump.test.nodes::to-node-and-back :|back| a)))
+    (ensure-null (mismatch a b))))

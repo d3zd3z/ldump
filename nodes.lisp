@@ -128,6 +128,10 @@ the property list of the values in the XML property list."
     (unix-to-timestamp seconds :nsec (* milis 1000000))))
 (define-modify-macro string-to-timestampf () string-to-timestamp)
 
+(defun to-java-date (timestamp)
+  (princ-to-string (+ (* (timestamp-to-unix timestamp) 1000)
+		      (floor (nsec-of timestamp) 1000000))))
+
 ;;; Attempt to decode a "floating" timestamp represented as an integer
 ;;; and fraction part.
 (defun real-string-to-timestamp (str)
@@ -292,6 +296,10 @@ that don't contain actual data we want to backup."
   (string-to-octets "<?xml version=\"1.0\" encoding=\"UTF-8\"?>
 "))
 
+(defparameter *java-properties-dtd*
+  (string-to-octets "<!DOCTYPE properties SYSTEM \"http://java.sun.com/dtd/properties.dtd\">
+"))
+
 (defmethod encode-node ((node filesystem-node))
   (let* ((slot-names (get-interesting-slots node))
 	 (slot-names (sort slot-names #'string< :key #'symbol-name))
@@ -303,6 +311,22 @@ that don't contain actual data we want to backup."
 						   ,value)))))
 	 (xml (xmls:toxml sxml)))
     (concatenate 'byte-vector *xml-header* (string-to-octets xml))))
+
+(defmethod encode-node ((node backup))
+  (with-slots (date hash attributes) node
+    ;; Note that the date in the backup node is java style (in ms unix time).
+    (let* ((alist `(("entry" (("key" "_date")) ,(to-java-date date))
+		   ("entry" (("key" "hash")) ,(encode-slot hash))
+		   ,@(iter (for (key . value) in attributes)
+			   (for name = (unkeywordify key))
+			   (collect `("entry" (("key" ,name))
+					      ,value)))))
+	   (sxml `("properties" () ("comment" () "Backup") ,@alist))
+	   (xml (xmls:toxml sxml)))
+      (concatenate 'byte-vector
+		   *xml-header*
+		   *java-properties-dtd*
+		   (string-to-octets xml)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
