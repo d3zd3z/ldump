@@ -4,8 +4,7 @@
 (in-package #:db-zlib)
 
 (define-foreign-library zlib
-    #+ecl (:unix (:or "/lib64/libz.so"))
-    #-ecl (:unix (:or "libz.so.1.2.3" "libz.so.1" "libz.so"))
+    (:unix (:or "libz.so.1.2.3" "libz.so.1" "libz.so"))
     (t (:default "libz")))
 (use-foreign-library zlib)
 
